@@ -8,50 +8,86 @@ import {
   CardContent,
   LinearProgress,
   Stack,
+  ToggleButton,
+  ToggleButtonGroup,
   Typography,
 } from '@mui/material'
 import CloudUploadIcon from '@mui/icons-material/CloudUpload'
 import VerifiedUserOutlinedIcon from '@mui/icons-material/VerifiedUserOutlined'
+import LooksOneIcon from '@mui/icons-material/LooksOne'
+import LibraryBooksOutlinedIcon from '@mui/icons-material/LibraryBooksOutlined'
 import FileDropZone from '../components/FileDropZone'
-import { uploadDocument } from '../services/uploadApi'
-import { ALLOWED_EXTENSIONS } from '../utils/constants'
-
-function hasAllowedExtension(name) {
-  const lower = name.toLowerCase()
-  return ALLOWED_EXTENSIONS.some((ext) => lower.endsWith(ext))
-}
+import { uploadDocument, uploadDocuments } from '../services/uploadApi'
+import {
+  ALLOWED_EXTENSIONS,
+  isAllowedExtension,
+  MAX_MULTI_UPLOAD,
+} from '../utils/constants'
 
 export default function HomePage() {
   const navigate = useNavigate()
-  const [file, setFile] = useState(null)
+  const [uploadMode, setUploadMode] = useState('single')
+  const [files, setFiles] = useState([])
   const [status, setStatus] = useState('idle')
   const [errorMessage, setErrorMessage] = useState('')
+  const [uploadProgress, setUploadProgress] = useState(null)
 
   const uploading = status === 'uploading'
+  const multiple = uploadMode === 'multi'
+
+  const handleModeChange = (_event, next) => {
+    if (next === null) return
+    setUploadMode(next)
+    setFiles([])
+    setStatus('idle')
+    setErrorMessage('')
+    setUploadProgress(null)
+  }
+
+  const validateFiles = () => {
+    if (files.length === 0) {
+      return 'Please choose at least one file.'
+    }
+    if (!multiple && files.length > 1) {
+      return 'Single mode allows only one file.'
+    }
+    if (multiple && files.length > MAX_MULTI_UPLOAD) {
+      return `You can upload up to ${MAX_MULTI_UPLOAD} files at once.`
+    }
+    const invalid = files.find((f) => !isAllowedExtension(f.name))
+    if (invalid) {
+      return `Invalid type: ${invalid.name}. Allowed: ${ALLOWED_EXTENSIONS.join(', ')}`
+    }
+    return null
+  }
 
   const handleUpload = async () => {
-    if (!file) {
+    const validationError = validateFiles()
+    if (validationError) {
       setStatus('error')
-      setErrorMessage('Please choose a file first.')
-      return
-    }
-    if (!hasAllowedExtension(file.name)) {
-      setStatus('error')
-      setErrorMessage('Only .xlsx, .docx, and .pdf are allowed.')
+      setErrorMessage(validationError)
       return
     }
 
     setStatus('uploading')
     setErrorMessage('')
+    setUploadProgress(null)
+
     try {
-      const result = await uploadDocument(file)
-      navigate('/result', {
-        state: {
-          originalFilename: file.name,
-          uploadResult: result,
-          fileSize: file.size,
-        },
-      })
+      if (multiple) {
+        const uploads = await uploadDocuments(files, (p) => setUploadProgress(p))
+        navigate('/result', { state: { mode: 'multi', uploads } })
+      } else {
+        const result = await uploadDocument(files[0])
+        navigate('/result', {
+          state: {
+            mode: 'single',
+            originalFilename: files[0].name,
+            uploadResult: result,
+            fileSize: files[0].size,
+          },
+        })
+      }
     } catch (err) {
       setStatus('error')
       const detail = err.response?.data?.detail
@@ -64,12 +100,6 @@ export default function HomePage() {
     }
   }
 
-  const handleFileSelect = (selected) => {
-    setFile(selected)
-    setStatus('idle')
-    setErrorMessage('')
-  }
-
   return (
     <Stack spacing={3}>
       <Box textAlign="center">
@@ -79,29 +109,61 @@ export default function HomePage() {
         <Typography variant="h4" component="h1" gutterBottom>
           Upload & validate documents
         </Typography>
-        <Typography variant="body1" color="text.secondary" maxWidth={520} mx="auto">
-          Upload a single Excel, Word, or PDF file. The app detects the type and prepares it
-          for validation and processing.
+        <Typography variant="body1" color="text.secondary" maxWidth={560} mx="auto">
+          Upload one or many Excel, Word, or PDF files. The app detects each type and
+          processes Excel files automatically.
         </Typography>
       </Box>
 
       <Card elevation={2}>
         <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
           <Stack spacing={3}>
-            <Stack direction="row" spacing={1} alignItems="center" justifyContent="center">
-              <VerifiedUserOutlinedIcon color="action" />
-              <Typography variant="subtitle2" color="text.secondary">
-                Max 1 file per upload · Local processing only
-              </Typography>
+            <Stack alignItems="center" spacing={1}>
+              <ToggleButtonGroup
+                exclusive
+                value={uploadMode}
+                onChange={handleModeChange}
+                size="small"
+                color="primary"
+                disabled={uploading}
+              >
+                <ToggleButton value="single">
+                  <LooksOneIcon sx={{ mr: 0.5 }} fontSize="small" />
+                  Single file
+                </ToggleButton>
+                <ToggleButton value="multi">
+                  <LibraryBooksOutlinedIcon sx={{ mr: 0.5 }} fontSize="small" />
+                  Multiple files
+                </ToggleButton>
+              </ToggleButtonGroup>
+              <Stack direction="row" spacing={1} alignItems="center">
+                <VerifiedUserOutlinedIcon color="action" fontSize="small" />
+                <Typography variant="subtitle2" color="text.secondary">
+                  {multiple
+                    ? `Up to ${MAX_MULTI_UPLOAD} files · Local processing only`
+                    : 'One file per upload · Local processing only'}
+                </Typography>
+              </Stack>
             </Stack>
 
             <FileDropZone
-              file={file}
-              onFileSelect={handleFileSelect}
+              multiple={multiple}
+              files={files}
+              onFilesChange={setFiles}
               disabled={uploading}
             />
 
-            {uploading && <LinearProgress />}
+            {uploading && (
+              <Stack spacing={1}>
+                <LinearProgress />
+                {uploadProgress && (
+                  <Typography variant="caption" color="text.secondary" textAlign="center">
+                    Uploading {uploadProgress.current} of {uploadProgress.total}:{' '}
+                    {uploadProgress.fileName}
+                  </Typography>
+                )}
+              </Stack>
+            )}
 
             <Button
               variant="contained"
@@ -109,10 +171,14 @@ export default function HomePage() {
               fullWidth
               startIcon={<CloudUploadIcon />}
               onClick={handleUpload}
-              disabled={!file || uploading}
+              disabled={files.length === 0 || uploading}
               sx={{ py: 1.5 }}
             >
-              {uploading ? 'Uploading…' : 'Upload & continue'}
+              {uploading
+                ? 'Uploading…'
+                : multiple
+                  ? `Upload ${files.length} file${files.length === 1 ? '' : 's'} & continue`
+                  : 'Upload & continue'}
             </Button>
           </Stack>
         </CardContent>

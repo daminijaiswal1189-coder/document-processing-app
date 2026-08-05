@@ -3,8 +3,11 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.download import router as download_router
+from app.api.excel import router as excel_router
+from app.api.pdf import router as pdf_router
 from app.api.upload import router as upload_router
-from app.utils.paths import ensure_uploads_dir
+from app.utils.paths import ensure_processed_dir, ensure_uploads_dir
 
 logging.basicConfig(
     level=logging.INFO,
@@ -31,6 +34,9 @@ app.add_middleware(
 )
 
 app.include_router(upload_router)
+app.include_router(excel_router)
+app.include_router(pdf_router)
+app.include_router(download_router)
 
 
 @app.get("/health")
@@ -42,4 +48,5 @@ def health_check() -> dict[str, str]:
 @app.on_event("startup")
 def on_startup() -> None:
     ensure_uploads_dir()
+    ensure_processed_dir()
     logger.info("Backend started")
