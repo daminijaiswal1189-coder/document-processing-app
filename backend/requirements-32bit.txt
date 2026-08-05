@@ -1,0 +1,12 @@
+# Use this file on Windows with 32-bit Python only:
+#   pip install -r requirements-32bit.txt
+#
+# PyMuPDF does not reliably support 32-bit Windows. PDF POC uses pypdf (text extraction only).
+# Excel + Word match the main POC stack.
+
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+python-multipart>=0.0.12
+openpyxl>=3.1.5
+python-docx>=1.1.2
+pypdf>=4.0.0

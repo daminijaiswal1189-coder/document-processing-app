@@ -11,6 +11,7 @@ import InsertDriveFileOutlinedIcon from '@mui/icons-material/InsertDriveFileOutl
 import PictureAsPdfOutlinedIcon from '@mui/icons-material/PictureAsPdfOutlined'
 import TableChartOutlinedIcon from '@mui/icons-material/TableChartOutlined'
 import ArticleOutlinedIcon from '@mui/icons-material/ArticleOutlined'
+import { ALLOWED_EXTENSIONS } from '../utils/constants'
 
 const TYPE_CHIPS = [
   { ext: '.xlsx', label: 'Excel', icon: <TableChartOutlinedIcon fontSize="small" /> },
@@ -18,24 +19,42 @@ const TYPE_CHIPS = [
   { ext: '.pdf', label: 'PDF', icon: <PictureAsPdfOutlinedIcon fontSize="small" /> },
 ]
 
-export default function FileDropZone({ file, onFileSelect, disabled }) {
+function fileKey(file) {
+  return `${file.name}-${file.size}-${file.lastModified}`
+}
+
+export default function FileDropZone({
+  multiple = false,
+  files = [],
+  onFilesChange,
+  disabled,
+}) {
   const [dragOver, setDragOver] = useState(false)
 
-  const pickFile = useCallback(
-    (selected) => {
-      if (selected && !disabled) {
-        onFileSelect(selected)
+  const mergeFiles = useCallback(
+    (incoming) => {
+      if (!incoming.length) return
+      if (multiple) {
+        const map = new Map(files.map((f) => [fileKey(f), f]))
+        incoming.forEach((f) => map.set(fileKey(f), f))
+        onFilesChange(Array.from(map.values()))
+      } else {
+        onFilesChange([incoming[0]])
       }
     },
-    [disabled, onFileSelect],
+    [files, multiple, onFilesChange],
   )
 
   const onDrop = (event) => {
     event.preventDefault()
     setDragOver(false)
     if (disabled) return
-    const dropped = event.dataTransfer.files?.[0]
-    pickFile(dropped ?? null)
+    const list = Array.from(event.dataTransfer.files ?? [])
+    mergeFiles(list)
+  }
+
+  const removeFile = (key) => {
+    onFilesChange(files.filter((f) => fileKey(f) !== key))
   }
 
   return (
@@ -63,9 +82,13 @@ export default function FileDropZone({ file, onFileSelect, disabled }) {
       <input
         type="file"
         hidden
-        accept=".xlsx,.docx,.pdf"
+        multiple={multiple}
+        accept={ALLOWED_EXTENSIONS.join(',')}
         disabled={disabled}
-        onChange={(e) => pickFile(e.target.files?.[0] ?? null)}
+        onChange={(e) => {
+          mergeFiles(Array.from(e.target.files ?? []))
+          e.target.value = ''
+        }}
       />
 
       <Stack spacing={2} alignItems="center">
@@ -87,7 +110,13 @@ export default function FileDropZone({ file, onFileSelect, disabled }) {
 
         <Box>
           <Typography variant="h6" gutterBottom>
-            {file ? 'Change file' : 'Drag & drop your document'}
+            {files.length
+              ? multiple
+                ? 'Add more files'
+                : 'Change file'
+              : multiple
+                ? 'Drag & drop documents'
+                : 'Drag & drop your document'}
           </Typography>
           <Typography variant="body2" color="text.secondary">
             or click to browse from your computer
@@ -100,14 +129,26 @@ export default function FileDropZone({ file, onFileSelect, disabled }) {
           ))}
         </Stack>
 
-        {file && (
-          <Chip
-            icon={<InsertDriveFileOutlinedIcon />}
-            label={file.name}
-            color="primary"
-            variant="filled"
-            sx={{ maxWidth: '100%', '& .MuiChip-label': { overflow: 'hidden', textOverflow: 'ellipsis' } }}
-          />
+        {files.length > 0 && (
+          <Stack spacing={1} sx={{ width: '100%', maxWidth: 480 }}>
+            {files.map((file) => {
+              const key = fileKey(file)
+              return (
+                <Chip
+                  key={key}
+                  icon={<InsertDriveFileOutlinedIcon />}
+                  label={file.name}
+                  color="primary"
+                  variant="filled"
+                  onDelete={multiple && !disabled ? () => removeFile(key) : undefined}
+                  sx={{
+                    maxWidth: '100%',
+                    '& .MuiChip-label': { overflow: 'hidden', textOverflow: 'ellipsis' },
+                  }}
+                />
+              )
+            })}
+          </Stack>
         )}
       </Stack>
     </Paper>
