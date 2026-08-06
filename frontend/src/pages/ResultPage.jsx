@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useState } from 'react'
+/**
+ * Result page: runs document processing after upload.
+ *
+ * Flow:
+ *   location.state from HomePage → SingleResultView or MultiResultView.
+ *   document_type excel → POST /process/excel + download.
+ *   document_type pdf   → POST /process/pdf.
+ *   document_type word  → POST /process/word.
+ */
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate, Navigate } from 'react-router-dom'
 import {
   Alert,
@@ -23,17 +32,21 @@ import UploadFileIcon from '@mui/icons-material/UploadFile'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import DownloadIcon from '@mui/icons-material/Download'
 import TableChartOutlinedIcon from '@mui/icons-material/TableChartOutlined'
+import ArticleOutlinedIcon from '@mui/icons-material/ArticleOutlined'
 import PictureAsPdfOutlinedIcon from '@mui/icons-material/PictureAsPdfOutlined'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import { downloadProcessedExcel, processExcel } from '../services/excelApi'
 import { processPdf } from '../services/pdfApi'
+import { processWord } from '../services/wordApi'
 
+/** UI metadata for upload document_type chips on the result page. */
 const TYPE_LABELS = {
   excel: { label: 'Excel', color: 'success' },
   word: { label: 'Word', color: 'primary' },
   pdf: { label: 'PDF', color: 'error' },
 }
 
+/** Human-readable file size for upload details table. */
 function formatBytes(bytes) {
   if (!bytes) return '—'
   if (bytes < 1024) return `${bytes} B`
@@ -41,6 +54,14 @@ function formatBytes(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+/** Format API processing_time_ms for display. */
+function formatProcessingTime(ms) {
+  if (ms == null || Number.isNaN(ms)) return '—'
+  if (ms < 1000) return `${Math.round(ms)} ms`
+  return `${(ms / 1000).toFixed(2)} s`
+}
+
+/** Extract FastAPI error detail string from an axios error. */
 function apiErrorMessage(err, fallback) {
   const detail = err.response?.data?.detail
   if (typeof detail === 'string') return detail
@@ -131,12 +152,70 @@ function PdfValidationCard({ pdfStatus, pdfError, pdfResult, onRetry }) {
             </Alert>
             <Typography variant="body2" color="text.secondary">
               Text extracted: {pdfResult.page_text_length?.toLocaleString()} characters
+              {' · '}
+              Processing time: {formatProcessingTime(pdfResult.processing_time_ms)}
             </Typography>
             {!passed && (
               <Stack spacing={2}>
                 <MissingItemsTable title="Missing headings" items={pdfResult.missing_headings} />
                 <MissingItemsTable title="Missing questions" items={pdfResult.missing_questions} />
                 <MissingItemsTable title="Missing answers" items={pdfResult.missing_answers} />
+              </Stack>
+            )}
+          </Stack>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function WordValidationCard({ wordStatus, wordError, wordResult, onRetry }) {
+  const passed = wordResult?.status === 'PASS'
+
+  return (
+    <Card elevation={2}>
+      <CardContent>
+        <Stack direction="row" spacing={1} alignItems="center" mb={2}>
+          <ArticleOutlinedIcon color="primary" />
+          <Typography variant="h6">Word validation</Typography>
+        </Stack>
+        <Divider sx={{ mb: 2 }} />
+
+        {wordStatus === 'processing' && (
+          <Stack direction="row" spacing={2} alignItems="center">
+            <CircularProgress size={28} />
+            <Typography color="text.secondary">Reading Word document and checking required content…</Typography>
+          </Stack>
+        )}
+
+        {wordStatus === 'error' && (
+          <Stack spacing={2}>
+            <Alert severity="error">{wordError}</Alert>
+            <Button variant="outlined" startIcon={<RefreshIcon />} onClick={onRetry}>
+              Retry validation
+            </Button>
+          </Stack>
+        )}
+
+        {wordStatus === 'done' && wordResult && (
+          <Stack spacing={2}>
+            <Alert severity={passed ? 'success' : 'error'}>
+              Validation status: <strong>{wordResult.status}</strong>
+              {' — '}
+              {wordResult.message}
+            </Alert>
+            <Typography variant="body2" color="text.secondary">
+              Paragraphs: {wordResult.paragraph_count?.toLocaleString()}
+              {' · '}
+              Text extracted: {wordResult.document_text_length?.toLocaleString()} characters
+              {' · '}
+              Processing time: {formatProcessingTime(wordResult.processing_time_ms)}
+            </Typography>
+            {!passed && (
+              <Stack spacing={2}>
+                <MissingItemsTable title="Missing headings" items={wordResult.missing_headings} />
+                <MissingItemsTable title="Missing questions" items={wordResult.missing_questions} />
+                <MissingItemsTable title="Missing answers" items={wordResult.missing_answers} />
               </Stack>
             )}
           </Stack>
@@ -166,7 +245,7 @@ function ExcelProcessCard({
         {excelStatus === 'processing' && (
           <Stack direction="row" spacing={2} alignItems="center">
             <CircularProgress size={28} />
-            <Typography color="text.secondary">Inserting column next to Entry…</Typography>
+            <Typography color="text.secondary">Adding POC Status column and Name/SSN tab…</Typography>
           </Stack>
         )}
 
@@ -198,6 +277,25 @@ function ExcelProcessCard({
                     <TableCell>{excelResult.details.rows_updated}</TableCell>
                   </TableRow>
                   <TableRow>
+                    <TableCell sx={{ fontWeight: 600 }}>Name / SSN tab</TableCell>
+                    <TableCell>
+                      {excelResult.details.extract_sheet_name} ({excelResult.details.name_ssn_rows}{' '}
+                      rows)
+                    </TableCell>
+                  </TableRow>
+                  {excelResult.details.static_inplace_updated && (
+                    <TableRow>
+                      <TableCell sx={{ fontWeight: 600 }}>Updated on disk</TableCell>
+                      <TableCell sx={{ wordBreak: 'break-word' }}>
+                        {excelResult.details.static_inplace_path}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 600 }}>Processing time</TableCell>
+                    <TableCell>{formatProcessingTime(excelResult.processing_time_ms)}</TableCell>
+                  </TableRow>
+                  <TableRow>
                     <TableCell sx={{ fontWeight: 600 }}>Download file</TableCell>
                     <TableCell sx={{ wordBreak: 'break-word' }}>
                       {excelResult.processed_filename}
@@ -223,7 +321,7 @@ function ExcelProcessCard({
   )
 }
 
-function SingleResultView({ originalFilename, uploadResult, fileSize, navigate }) {
+function SingleResultView({ originalFilename, uploadResult, fileSize, sourcePath, navigate }) {
   const [excelStatus, setExcelStatus] = useState('idle')
   const [excelResult, setExcelResult] = useState(null)
   const [excelError, setExcelError] = useState('')
@@ -233,10 +331,17 @@ function SingleResultView({ originalFilename, uploadResult, fileSize, navigate }
   const [pdfResult, setPdfResult] = useState(null)
   const [pdfError, setPdfError] = useState('')
 
+  const [wordStatus, setWordStatus] = useState('idle')
+  const [wordResult, setWordResult] = useState(null)
+  const [wordError, setWordError] = useState('')
+
+  const excelProcessStartedFor = useRef(null)
+
   const storedFilename = uploadResult?.data?.filename
   const docType = uploadResult?.data?.document_type ?? 'unknown'
   const isExcel = docType === 'excel'
   const isPdf = docType === 'pdf'
+  const isWord = docType === 'word'
   const typeMeta = TYPE_LABELS[docType] ?? { label: docType, color: 'default' }
 
   const runExcelProcess = useCallback(async () => {
@@ -250,7 +355,7 @@ function SingleResultView({ originalFilename, uploadResult, fileSize, navigate }
     } catch (err) {
       setExcelStatus('error')
       setExcelError(
-        apiErrorMessage(err, 'Excel processing failed. Does the sheet have an Entry column?'),
+        apiErrorMessage(err, 'Excel processing failed.'),
       )
     }
   }, [storedFilename])
@@ -269,11 +374,26 @@ function SingleResultView({ originalFilename, uploadResult, fileSize, navigate }
     }
   }, [storedFilename])
 
-  useEffect(() => {
-    if (isExcel && storedFilename && excelStatus === 'idle') {
-      runExcelProcess()
+  const runWordValidation = useCallback(async () => {
+    if (!storedFilename) return
+    setWordStatus('processing')
+    setWordError('')
+    try {
+      const result = await processWord(storedFilename)
+      setWordResult(result)
+      setWordStatus('done')
+    } catch (err) {
+      setWordStatus('error')
+      setWordError(apiErrorMessage(err, 'Word validation failed.'))
     }
-  }, [isExcel, storedFilename, excelStatus, runExcelProcess])
+  }, [storedFilename])
+
+  useEffect(() => {
+    if (!isExcel || !storedFilename) return
+    if (excelProcessStartedFor.current === storedFilename) return
+    excelProcessStartedFor.current = storedFilename
+    runExcelProcess()
+  }, [isExcel, storedFilename, runExcelProcess])
 
   useEffect(() => {
     if (isPdf && storedFilename && pdfStatus === 'idle') {
@@ -281,8 +401,22 @@ function SingleResultView({ originalFilename, uploadResult, fileSize, navigate }
     }
   }, [isPdf, storedFilename, pdfStatus, runPdfValidation])
 
+  useEffect(() => {
+    if (isWord && storedFilename && wordStatus === 'idle') {
+      runWordValidation()
+    }
+  }, [isWord, storedFilename, wordStatus, runWordValidation])
+
   const uploadRows = [
     { label: 'Original file name', value: originalFilename },
+    ...(sourcePath || uploadResult?.data?.source_path
+      ? [
+          {
+            label: 'Source path (server)',
+            value: sourcePath || uploadResult.data.source_path,
+          },
+        ]
+      : []),
     { label: 'Detected type', value: typeMeta.label },
     { label: 'Stored file name', value: storedFilename ?? '—' },
     { label: 'File size', value: formatBytes(fileSize) },
@@ -293,7 +427,10 @@ function SingleResultView({ originalFilename, uploadResult, fileSize, navigate }
     if (!excelResult?.processed_filename) return
     setDownloading(true)
     try {
-      await downloadProcessedExcel(excelResult.processed_filename)
+      await downloadProcessedExcel(
+        excelResult.processed_filename,
+        excelResult.processing_time_ms ?? Date.now(),
+      )
     } catch (err) {
       setExcelError(apiErrorMessage(err, 'Download failed.'))
     } finally {
@@ -302,9 +439,9 @@ function SingleResultView({ originalFilename, uploadResult, fileSize, navigate }
   }
 
   let subtitle = 'Your file was saved.'
-  if (isExcel) subtitle = 'Processing your Excel file (adds a column after Entry).'
+  if (isExcel) subtitle = 'Processing your Excel file (adds POC Status at the end of the sheet).'
   if (isPdf) subtitle = 'Validating PDF against required headings, questions, and answers.'
-  if (docType === 'word') subtitle = 'Word validation will be added in the next phase.'
+  if (isWord) subtitle = 'Validating Word document against required headings, questions, and answers.'
 
   return (
     <Stack spacing={3}>
@@ -346,10 +483,7 @@ function SingleResultView({ originalFilename, uploadResult, fileSize, navigate }
           excelError={excelError}
           excelResult={excelResult}
           downloading={downloading}
-          onRetry={() => {
-            setExcelStatus('idle')
-            setExcelResult(null)
-          }}
+          onRetry={runExcelProcess}
           onDownload={handleDownload}
         />
       )}
@@ -366,8 +500,16 @@ function SingleResultView({ originalFilename, uploadResult, fileSize, navigate }
         />
       )}
 
-      {docType === 'word' && (
-        <Alert severity="info">Word validation API coming soon.</Alert>
+      {isWord && (
+        <WordValidationCard
+          wordStatus={wordStatus}
+          wordError={wordError}
+          wordResult={wordResult}
+          onRetry={() => {
+            setWordStatus('idle')
+            setWordResult(null)
+          }}
+        />
       )}
 
       <NavButtons navigate={navigate} />
@@ -376,22 +518,22 @@ function SingleResultView({ originalFilename, uploadResult, fileSize, navigate }
 }
 
 function initialProcessState(docType) {
-  if (docType === 'excel' || docType === 'pdf') {
+  if (docType === 'excel' || docType === 'pdf' || docType === 'word') {
     return { status: 'pending', result: null, error: '' }
   }
   return { status: 'skipped', result: null, error: '' }
 }
 
-function ProcessStatusCell({ status, pdfResult }) {
+function ProcessStatusCell({ status, validationResult }) {
   if (status === 'processing') return <CircularProgress size={20} />
   if (status === 'pending') return <Chip label="Queued" size="small" variant="outlined" />
   if (status === 'skipped') return <Chip label="N/A" size="small" variant="outlined" />
   if (status === 'error') return <Chip label="Error" color="error" size="small" />
-  if (status === 'done' && pdfResult?.status) {
+  if (status === 'done' && validationResult?.status) {
     return (
       <Chip
-        label={pdfResult.status}
-        color={pdfResult.status === 'PASS' ? 'success' : 'error'}
+        label={validationResult.status}
+        color={validationResult.status === 'PASS' ? 'success' : 'error'}
         size="small"
       />
     )
@@ -410,6 +552,7 @@ function MultiResultView({ uploads, navigate }) {
         docType,
         excel: initialProcessState(docType === 'excel' ? 'excel' : 'other'),
         pdf: initialProcessState(docType === 'pdf' ? 'pdf' : 'other'),
+        word: initialProcessState(docType === 'word' ? 'word' : 'other'),
       }
     }),
   )
@@ -491,6 +634,39 @@ function MultiResultView({ uploads, navigate }) {
             )
           }
         }
+
+        if (docType === 'word') {
+          setItems((prev) =>
+            prev.map((row, idx) =>
+              idx === i ? { ...row, word: { ...row.word, status: 'processing' } } : row,
+            ),
+          )
+          try {
+            const result = await processWord(stored)
+            if (cancelled) return
+            setItems((prev) =>
+              prev.map((row, idx) =>
+                idx === i ? { ...row, word: { status: 'done', result, error: '' } } : row,
+              ),
+            )
+          } catch (err) {
+            if (cancelled) return
+            setItems((prev) =>
+              prev.map((row, idx) =>
+                idx === i
+                  ? {
+                      ...row,
+                      word: {
+                        status: 'error',
+                        result: null,
+                        error: apiErrorMessage(err, 'Word validation failed.'),
+                      },
+                    }
+                  : row,
+              ),
+            )
+          }
+        }
       }
     }
 
@@ -558,6 +734,35 @@ function MultiResultView({ uploads, navigate }) {
     }
   }
 
+  const retryWord = async (index) => {
+    const stored = items[index].uploadResult?.data?.filename
+    if (!stored) return
+    setItems((prev) =>
+      prev.map((row, idx) =>
+        idx === index ? { ...row, word: { status: 'processing', result: null, error: '' } } : row,
+      ),
+    )
+    try {
+      const result = await processWord(stored)
+      setItems((prev) =>
+        prev.map((row, idx) =>
+          idx === index ? { ...row, word: { status: 'done', result, error: '' } } : row,
+        ),
+      )
+    } catch (err) {
+      setItems((prev) =>
+        prev.map((row, idx) =>
+          idx === index
+            ? {
+                ...row,
+                word: { status: 'error', result: null, error: apiErrorMessage(err, 'Failed.') },
+              }
+            : row,
+        ),
+      )
+    }
+  }
+
   return (
     <Stack spacing={3}>
       <Box textAlign="center">
@@ -566,7 +771,7 @@ function MultiResultView({ uploads, navigate }) {
           {uploads.length} files uploaded
         </Typography>
         <Typography color="text.secondary">
-          Excel and PDF files are processed automatically after upload.
+          Excel, Word, and PDF files are processed automatically after upload.
         </Typography>
       </Box>
 
@@ -583,6 +788,7 @@ function MultiResultView({ uploads, navigate }) {
                   <TableCell>Type</TableCell>
                   <TableCell>Size</TableCell>
                   <TableCell>Result</TableCell>
+                  <TableCell>Time</TableCell>
                   <TableCell align="right">Action</TableCell>
                 </TableRow>
               </TableHead>
@@ -593,9 +799,18 @@ function MultiResultView({ uploads, navigate }) {
                     color: 'default',
                   }
                   const showPdfResult = item.docType === 'pdf'
+                  const showWordResult = item.docType === 'word'
                   const showExcelResult = item.docType === 'excel'
-                  const processStatus = showPdfResult ? item.pdf.status : item.excel.status
-                  const processResult = showPdfResult ? item.pdf.result : item.excel.result
+                  const processStatus = showPdfResult
+                    ? item.pdf.status
+                    : showWordResult
+                      ? item.word.status
+                      : item.excel.status
+                  const processResult = showPdfResult
+                    ? item.pdf.result
+                    : showWordResult
+                      ? item.word.result
+                      : item.excel.result
 
                   return (
                     <TableRow key={item.id}>
@@ -607,7 +822,12 @@ function MultiResultView({ uploads, navigate }) {
                       </TableCell>
                       <TableCell>{formatBytes(item.fileSize)}</TableCell>
                       <TableCell>
-                        <ProcessStatusCell status={processStatus} pdfResult={processResult} />
+                        <ProcessStatusCell status={processStatus} validationResult={processResult} />
+                      </TableCell>
+                      <TableCell>
+                        {processStatus === 'done' && processResult?.processing_time_ms != null
+                          ? formatProcessingTime(processResult.processing_time_ms)
+                          : '—'}
                       </TableCell>
                       <TableCell align="right">
                         {showExcelResult &&
@@ -617,7 +837,10 @@ function MultiResultView({ uploads, navigate }) {
                               size="small"
                               startIcon={<DownloadIcon />}
                               onClick={() =>
-                                downloadProcessedExcel(item.excel.result.processed_filename)
+                                downloadProcessedExcel(
+                                  item.excel.result.processed_filename,
+                                  item.excel.result.processing_time_ms ?? Date.now(),
+                                )
                               }
                             >
                               Download
@@ -633,6 +856,11 @@ function MultiResultView({ uploads, navigate }) {
                             Retry
                           </Button>
                         )}
+                        {showWordResult && item.word.status === 'error' && (
+                          <Button size="small" onClick={() => retryWord(index)}>
+                            Retry
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   )
@@ -641,14 +869,18 @@ function MultiResultView({ uploads, navigate }) {
             </Table>
           </TableContainer>
 
-          {items.some((i) => i.pdf.status === 'done' && i.pdf.result?.status === 'FAIL') && (
+          {items.some(
+            (i) =>
+              (i.pdf.status === 'done' && i.pdf.result?.status === 'FAIL') ||
+              (i.word.status === 'done' && i.word.result?.status === 'FAIL'),
+          ) && (
             <Stack spacing={2} sx={{ mt: 2 }}>
               {items
                 .filter((i) => i.pdf.status === 'done' && i.pdf.result?.status === 'FAIL')
                 .map((i) => (
                   <Alert key={`pdf-fail-${i.id}`} severity="warning">
                     <Typography variant="subtitle2" gutterBottom>
-                      {i.originalFilename} — validation FAIL
+                      {i.originalFilename} — PDF validation FAIL
                     </Typography>
                     {!!i.pdf.result.missing_headings?.length && (
                       <Typography variant="body2">
@@ -667,16 +899,40 @@ function MultiResultView({ uploads, navigate }) {
                     )}
                   </Alert>
                 ))}
+              {items
+                .filter((i) => i.word.status === 'done' && i.word.result?.status === 'FAIL')
+                .map((i) => (
+                  <Alert key={`word-fail-${i.id}`} severity="warning">
+                    <Typography variant="subtitle2" gutterBottom>
+                      {i.originalFilename} — Word validation FAIL
+                    </Typography>
+                    {!!i.word.result.missing_headings?.length && (
+                      <Typography variant="body2">
+                        Missing headings: {i.word.result.missing_headings.join(', ')}
+                      </Typography>
+                    )}
+                    {!!i.word.result.missing_questions?.length && (
+                      <Typography variant="body2">
+                        Missing questions: {i.word.result.missing_questions.join(', ')}
+                      </Typography>
+                    )}
+                    {!!i.word.result.missing_answers?.length && (
+                      <Typography variant="body2">
+                        Missing answers: {i.word.result.missing_answers.join(', ')}
+                      </Typography>
+                    )}
+                  </Alert>
+                ))}
             </Stack>
           )}
 
-          {items.some((i) => i.excel.error || i.pdf.error) && (
+          {items.some((i) => i.excel.error || i.pdf.error || i.word.error) && (
             <Stack spacing={1} sx={{ mt: 2 }}>
               {items
-                .filter((i) => i.excel.error || i.pdf.error)
+                .filter((i) => i.excel.error || i.pdf.error || i.word.error)
                 .map((i) => (
                   <Alert key={`err-${i.id}`} severity="error">
-                    {i.originalFilename}: {i.excel.error || i.pdf.error}
+                    {i.originalFilename}: {i.excel.error || i.pdf.error || i.word.error}
                   </Alert>
                 ))}
             </Stack>
@@ -706,6 +962,7 @@ export default function ResultPage() {
         originalFilename={state.originalFilename}
         uploadResult={state.uploadResult}
         fileSize={state.fileSize}
+        sourcePath={state.sourcePath}
         navigate={navigate}
       />
     )

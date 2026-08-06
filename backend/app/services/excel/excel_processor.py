@@ -1,290 +1,319 @@
+"""
+Excel processing: append POC Status and highlight FALSE/NA cells.
+
+Flow:
+  1. Load workbook from storage/uploads (.xlsx directly, or convert .xls first).
+  2. Add a new column at the end with header POC Status.
+  3. For each data row (non-summary, has content), set Processed and red-fill FALSE/NA cells.
+  4. Add worksheet ``Name and SSN`` with columns name and ssn copied from the source sheet.
+  5. Save to storage/processed/processed_<uuid>.xlsx.
+
+Uses worksheet._cells for reads where possible to avoid creating empty cells.
+"""
+
 import logging
-import re
+import os
+import tempfile
 from copy import copy
 from pathlib import Path
 
 from openpyxl import load_workbook
-from openpyxl.formula.translate import Translator
-from openpyxl.utils import column_index_from_string, get_column_letter
-from openpyxl.utils.cell import range_boundaries
-from openpyxl.workbook.properties import CalcProperties
+from openpyxl.styles import PatternFill
 
 from app.services.excel.excel_config import (
-    ENTRY_HEADER_NAME,
+    EXTRACT_SHEET_NAME,
+    EXTRACT_TAB_NAME_HEADER,
+    EXTRACT_TAB_SSN_HEADER,
+    FALSE_NA_FILL_RGB,
     HEADER_ROW,
     NEW_COLUMN_DEFAULT_VALUE,
     NEW_COLUMN_HEADER,
+    SOURCE_NAME_HEADERS,
+    SOURCE_SSN_HEADERS,
 )
+from app.services.excel.xls_converter import convert_xls_to_xlsx
 
 logger = logging.getLogger(__name__)
 
-# $AI$4, $AI$ (defined names)
-_DOLLAR_COL_DOLLAR = re.compile(r"\$([A-Z]{1,3})\$")
-# $AI: in $AI:$AI (whole-column refs)
-_DOLLAR_COL_COLON = re.compile(r"\$([A-Z]{1,3}):")
-# :$AI at end of string ($AI:$AI)
-_TRAILING_COLON_DOLLAR_COL = re.compile(r":\$([A-Z]{1,3})$")
+# Reused PatternFill for FALSE / NA highlighting (copied per cell).
+_RED_FILL = PatternFill(fill_type="solid", fgColor=FALSE_NA_FILL_RGB)
 
 
 class ExcelProcessor:
+    """
+    Transforms an uploaded .xlsx or legacy .xls into a processed .xlsx copy with an extra status column.
+
+    Summary rows (containing 'total' in columns A–E) are skipped for POC values.
+    """
+
     def process(self, source_path: Path, output_path: Path) -> dict[str, str | int]:
+        """
+        Run the full Excel pipeline and write ``output_path``.
+
+        Args:
+            source_path: Path to the uploaded .xlsx or .xls in storage/uploads.
+            output_path: Destination .xlsx path under storage/processed.
+
+        Returns:
+            Metadata for the API response (sheet name, column index, counts).
+        """
         if not source_path.is_file():
             raise FileNotFoundError(f"Source file not found: {source_path}")
 
         logger.info("Processing Excel file: %s", source_path.name)
 
-        workbook = load_workbook(source_path, data_only=False)
-        worksheet = workbook.active
+        temp_dir: tempfile.TemporaryDirectory[str] | None = None
+        work_path = source_path
+        if source_path.suffix.lower() == ".xls":
+            temp_dir = tempfile.TemporaryDirectory(prefix="poc_xls_")
+            work_path = Path(temp_dir.name) / f"{source_path.stem}.xlsx"
+            convert_xls_to_xlsx(source_path, work_path)
 
-        entry_col = self._find_entry_column(worksheet)
-        if entry_col is None:
+        try:
+            workbook = load_workbook(work_path, data_only=False)
+            worksheet = workbook.active
+            result = self._apply_transforms(workbook, worksheet)
+
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            workbook.save(output_path)
             workbook.close()
-            raise ValueError(
-                f'Column "{ENTRY_HEADER_NAME}" not found in row {HEADER_ROW}'
+
+            logger.info(
+                "Saved processed file: %s (rows updated: %s, new column: %s, red fills: %s)",
+                output_path.name,
+                result["rows_updated"],
+                result["new_column_index"],
+                result["cells_filled_red"],
             )
 
-        new_col = entry_col + 1
-        if self._column_has_content(worksheet, new_col):
-            worksheet.insert_cols(new_col)
-            self._repair_after_column_insert(workbook, worksheet, new_col)
-        else:
-            logger.info("Column %s is empty; writing in place without insert_cols", new_col)
+            return result
+        finally:
+            if temp_dir is not None:
+                temp_dir.cleanup()
 
-        worksheet.cell(row=HEADER_ROW, column=new_col, value=NEW_COLUMN_HEADER)
-        self._copy_header_style(worksheet, entry_col, new_col)
+    def process_inplace(self, target_path: Path) -> dict[str, str | int]:
+        """
+        Apply the same transforms as ``process`` and overwrite ``target_path`` in place.
+
+        Uses a temporary file in the same directory, then atomic replace, to reduce
+        risk of a partial write if save fails.
+
+        Args:
+            target_path: Existing .xlsx on disk (must be writable).
+
+        Returns:
+            Transform metadata (sheet name, column index, counts).
+        """
+        if not target_path.is_file():
+            raise FileNotFoundError(f"Target file not found: {target_path}")
+        if target_path.suffix.lower() != ".xlsx":
+            raise ValueError("In-place processing supports .xlsx only")
+
+        logger.info("In-place Excel update: %s", target_path)
+
+        workbook = load_workbook(target_path, data_only=False)
+        try:
+            worksheet = workbook.active
+            result = self._apply_transforms(workbook, worksheet)
+
+            fd, tmp_name = tempfile.mkstemp(
+                suffix=".xlsx",
+                prefix=f".{target_path.stem}_poc_",
+                dir=target_path.parent,
+            )
+            os.close(fd)
+            tmp_path = Path(tmp_name)
+            try:
+                workbook.save(tmp_path)
+                os.replace(tmp_path, target_path)
+            finally:
+                if tmp_path.is_file():
+                    tmp_path.unlink(missing_ok=True)
+
+            logger.info(
+                "Updated in place: %s (rows updated: %s, column: %s)",
+                target_path.name,
+                result["rows_updated"],
+                result["new_column_index"],
+            )
+            return result
+        finally:
+            workbook.close()
+
+    def _apply_transforms(self, workbook, worksheet) -> dict[str, str | int]:
+        """POC Status column, FALSE/NA highlighting, and Name/SSN extract sheet."""
+        new_col = self._resolve_or_create_poc_column(worksheet)
 
         rows_updated = 0
-        last_data_row = self._find_last_data_row(worksheet, entry_col)
+        cells_filled_red = 0
+        last_data_row = self._find_last_data_row(worksheet)
         for row in range(HEADER_ROW + 1, last_data_row + 1):
-            if not self._row_should_receive_value(worksheet, row, entry_col, new_col):
+            if not self._row_should_receive_value(worksheet, row):
                 continue
             worksheet.cell(row=row, column=new_col, value=NEW_COLUMN_DEFAULT_VALUE)
+            cells_filled_red += self._fill_color_in_cell(worksheet, row)
             rows_updated += 1
 
-        self._configure_excel_recalc_on_open(workbook)
-
-        output_path.parent.mkdir(parents=True, exist_ok=True)
+        name_ssn_rows = self._create_name_ssn_sheet(workbook, worksheet)
         sheet_name = worksheet.title
-        workbook.save(output_path)
-        workbook.close()
-
-        logger.info(
-            "Saved processed file: %s (rows updated: %s)",
-            output_path.name,
-            rows_updated,
-        )
 
         return {
             "sheet_name": sheet_name,
-            "entry_column_index": entry_col,
             "new_column_index": new_col,
             "new_column_header": NEW_COLUMN_HEADER,
             "rows_updated": rows_updated,
+            "cells_filled_red": cells_filled_red,
+            "extract_sheet_name": EXTRACT_SHEET_NAME,
+            "name_ssn_rows": name_ssn_rows,
         }
 
-    def _repair_after_column_insert(
-        self, workbook, worksheet, insert_col: int, amount: int = 1
-    ) -> None:
-        """Fix formulas, merges, and named ranges after openpyxl insert_cols."""
-        self._translate_formulas_after_column_insert(worksheet, insert_col, amount)
-        self._translate_formulas_before_insert_column(worksheet, insert_col, amount)
-        self._adjust_merged_cells_after_column_insert(worksheet, insert_col, amount)
-        self._adjust_defined_names_after_column_insert(workbook, insert_col, amount)
-
-    def _configure_excel_recalc_on_open(self, workbook) -> None:
-        calc_id = 191028
-        if workbook.calculation is not None and workbook.calculation.calcId:
-            calc_id = workbook.calculation.calcId
-        workbook.calculation = CalcProperties(
-            calcId=calc_id,
-            calcMode="auto",
-            fullCalcOnLoad=True,
-            calcOnSave=True,
-        )
-
-    def _find_entry_column(self, worksheet) -> int | None:
+    def _resolve_or_create_poc_column(self, worksheet) -> int:
+        """Use existing POC Status column if present; otherwise append a new column."""
         for col in range(1, worksheet.max_column + 1):
-            value = worksheet.cell(row=HEADER_ROW, column=col).value
-            if value is None:
+            header = self._get_cell_value(worksheet, HEADER_ROW, col)
+            if header is None:
                 continue
-            if str(value).strip().lower() == ENTRY_HEADER_NAME.lower():
+            if str(header).strip() == NEW_COLUMN_HEADER:
                 return col
-        return None
+        new_col = worksheet.max_column + 1
+        worksheet.cell(row=HEADER_ROW, column=new_col, value=NEW_COLUMN_HEADER)
+        return new_col
 
-    def _column_has_content(self, worksheet, col: int) -> bool:
-        for row in range(HEADER_ROW, worksheet.max_row + 1):
-            cell = worksheet.cell(row=row, column=col)
-            if cell.data_type == "f" and cell.value:
-                return True
-            if cell.value is not None and str(cell.value).strip() != "":
-                return True
-        return False
+    def _fill_color_in_cell(self, worksheet, row: int) -> int:
+        """
+        Apply red fill to existing cells on ``row`` whose value is FALSE or NA.
 
-    def _find_last_data_row(self, worksheet, entry_col: int) -> int:
+        Only touches cells already present in worksheet._cells.
+
+        Returns:
+            Number of cells that received the red fill.
+        """
+        filled = 0
+        for (cell_row, _col), cell in worksheet._cells.items():
+            if cell_row != row:
+                continue
+            if not self._is_false_or_na_value(cell.value):
+                continue
+            cell.fill = copy(_RED_FILL)
+            filled += 1
+        return filled
+
+    def _is_false_or_na_value(self, value) -> bool:
+        """True for boolean False or string false / na / n/a (case-insensitive)."""
+        if isinstance(value, bool):
+            return value is False
+        if value is None:
+            return False
+        text = str(value).strip().lower()
+        return text in {"false", "na", "n/a"}
+
+    def _find_last_data_row(self, worksheet) -> int:
+        """Last row index that contains any formula or non-empty value (scan existing cells)."""
         last_row = HEADER_ROW
-        for row in range(HEADER_ROW + 1, worksheet.max_row + 1):
-            if self._row_has_meaningful_content(worksheet, row, entry_col):
-                last_row = row
+        for (row, _col), cell in worksheet._cells.items():
+            if row <= HEADER_ROW:
+                continue
+            if self._cell_has_meaningful_content(cell):
+                last_row = max(last_row, row)
         return max(last_row, HEADER_ROW + 1)
 
-    def _row_has_meaningful_content(self, worksheet, row: int, entry_col: int) -> bool:
-        for col in range(1, worksheet.max_column + 1):
-            cell = worksheet.cell(row=row, column=col)
-            if cell.data_type == "f" and cell.value:
-                return True
-            if cell.value is None:
-                continue
-            if str(cell.value).strip() != "":
-                return True
-        return False
+    def _cell_has_meaningful_content(self, cell) -> bool:
+        """True if the cell has a formula or non-blank scalar value."""
+        if cell.data_type == "f" and cell.value:
+            return True
+        if cell.value is None:
+            return False
+        return str(cell.value).strip() != ""
 
-    def _row_should_receive_value(
-        self, worksheet, row: int, entry_col: int, new_col: int
-    ) -> bool:
+    def _get_cell_value(self, worksheet, row: int, col: int):
+        """Read cell value without creating a new cell if missing."""
+        cell = worksheet._cells.get((row, col))
+        if cell is None:
+            return None
+        return cell.value
+
+    def _row_should_receive_value(self, worksheet, row: int) -> bool:
+        """
+        Decide whether this row gets POC Status = Processed.
+
+        Skips summary rows; requires at least one meaningful cell on the row.
+        """
         if self._is_summary_row(worksheet, row):
             return False
+        return self._row_has_meaningful_content(worksheet, row)
 
-        entry_value = worksheet.cell(row=row, column=entry_col).value
-        if entry_value is not None and str(entry_value).strip() != "":
-            return True
-
+    def _row_has_meaningful_content(self, worksheet, row: int) -> bool:
+        """True if any existing cell on ``row`` has meaningful content."""
+        for (_row, _col), cell in worksheet._cells.items():
+            if _row != row:
+                continue
+            if self._cell_has_meaningful_content(cell):
+                return True
         return False
 
     def _is_summary_row(self, worksheet, row: int) -> bool:
+        """True when columns A–E contain a label with 'total' (case-insensitive)."""
         for col in range(1, min(worksheet.max_column, 5) + 1):
-            value = worksheet.cell(row=row, column=col).value
+            value = self._get_cell_value(worksheet, row, col)
             if value is None:
                 continue
-            text = str(value).strip().lower()
-            if "total" in text:
+            if "total" in str(value).strip().lower():
                 return True
         return False
 
-    def _copy_header_style(self, worksheet, from_col: int, to_col: int) -> None:
-        source = worksheet.cell(row=HEADER_ROW, column=from_col)
-        target = worksheet.cell(row=HEADER_ROW, column=to_col)
-        if source.has_style:
-            target.font = copy(source.font)
-            target.border = copy(source.border)
-            target.fill = copy(source.fill)
-            target.number_format = copy(source.number_format)
-            target.protection = copy(source.protection)
-            target.alignment = copy(source.alignment)
-
-    def _translate_formulas_after_column_insert(
-        self, worksheet, insert_col: int, amount: int = 1
-    ) -> None:
-        max_col = worksheet.max_column + amount
-        for row in range(1, worksheet.max_row + 1):
-            for col in range(insert_col + amount, max_col + 1):
-                cell = worksheet.cell(row=row, column=col)
-                if cell.data_type != "f" or not cell.value:
-                    continue
-                old_col = col - amount
-                old_coord = f"{get_column_letter(old_col)}{row}"
-                try:
-                    cell.value = Translator(cell.value, old_coord).translate_formula(
-                        col_delta=amount
-                    )
-                except Exception as exc:
-                    logger.warning(
-                        "Could not translate formula at %s: %s",
-                        cell.coordinate,
-                        exc,
-                    )
-
-    def _translate_formulas_before_insert_column(
-        self, worksheet, insert_col: int, amount: int = 1
-    ) -> None:
-        """Shift column references in formulas that stayed in columns left of the insert."""
-        for row in range(1, worksheet.max_row + 1):
-            for col in range(1, insert_col):
-                cell = worksheet.cell(row=row, column=col)
-                if cell.data_type != "f" or not cell.value:
-                    continue
-                shifted = self._shift_formula_column_references(
-                    cell.value, insert_col, amount
-                )
-                if shifted != cell.value:
-                    cell.value = shifted
-
-    def _shift_formula_column_references(
-        self, formula: str, insert_col: int, amount: int
-    ) -> str:
-        if not isinstance(formula, str) or not formula.startswith("="):
-            return formula
-
-        pattern = re.compile(r"(\$?)([A-Z]{1,3})(\$?)(\d+)")
-
-        def smart_repl(match: re.Match[str]) -> str:
-            col_letters = match.group(2)
-            col_idx = column_index_from_string(col_letters)
-            if col_idx >= insert_col:
-                col_idx += amount
-            return (
-                f"{match.group(1)}{get_column_letter(col_idx)}{match.group(3)}{match.group(4)}"
-            )
-
-        return pattern.sub(smart_repl, formula)
-
-    def _adjust_merged_cells_after_column_insert(
-        self, worksheet, insert_col: int, amount: int = 1
-    ) -> None:
-        merged_ranges = list(worksheet.merged_cells.ranges)
-        for merged_range in merged_ranges:
-            worksheet.unmerge_cells(str(merged_range))
-
-        for merged_range in merged_ranges:
-            min_col, min_row, max_col, max_row = range_boundaries(str(merged_range))
-            if min_col >= insert_col:
-                min_col += amount
-                max_col += amount
-            elif max_col >= insert_col:
-                max_col += amount
-            worksheet.merge_cells(
-                start_row=min_row,
-                start_column=min_col,
-                end_row=max_row,
-                end_column=max_col,
-            )
-
-    def _adjust_defined_names_after_column_insert(
-        self, workbook, insert_col: int, amount: int = 1
-    ) -> None:
-        if not workbook.defined_names:
-            return
-
-        for name in list(workbook.defined_names):
-            defn = workbook.defined_names[name]
-            if not defn.attr_text:
+    def _find_header_column(self, worksheet, header_names: tuple[str, ...]) -> int | None:
+        """Return 1-based column index whose row-1 header matches one of ``header_names``."""
+        needles = {name.strip().lower() for name in header_names}
+        for col in range(1, worksheet.max_column + 1):
+            value = self._get_cell_value(worksheet, HEADER_ROW, col)
+            if value is None:
                 continue
-            shifted = self._shift_column_refs_in_range(defn.attr_text, insert_col, amount)
-            if shifted != defn.attr_text:
-                logger.info("Defined name %s shifted: %s", name, defn.attr_text)
-                defn.attr_text = shifted
+            if str(value).strip().lower() in needles:
+                return col
+        return None
 
-    def _shift_col_letter(self, col_letter: str, insert_col: int, amount: int) -> str:
-        col_idx = column_index_from_string(col_letter)
-        if col_idx >= insert_col:
-            col_idx += amount
-        return get_column_letter(col_idx)
+    def _create_name_ssn_sheet(self, workbook, worksheet) -> int:
+        """
+        Add a tab with columns ``name`` and ``ssn`` populated from the active sheet.
 
-    def _shift_column_refs_in_range(
-        self, text: str, insert_col: int, amount: int
-    ) -> str:
-        def repl_dcd(match: re.Match[str]) -> str:
-            col = self._shift_col_letter(match.group(1), insert_col, amount)
-            return f"${col}$"
+        Skips summary rows and rows without a Name value.
 
-        def repl_dcc(match: re.Match[str]) -> str:
-            col = self._shift_col_letter(match.group(1), insert_col, amount)
-            return f"${col}:"
+        Returns:
+            Number of data rows written (excluding header).
+        """
+        name_col = self._find_header_column(worksheet, SOURCE_NAME_HEADERS)
+        if name_col is None:
+            raise ValueError(
+                f'Name column not found in row {HEADER_ROW} (expected header: Name)'
+            )
+        ssn_col = self._find_header_column(worksheet, SOURCE_SSN_HEADERS)
 
-        def repl_cdc(match: re.Match[str]) -> str:
-            col = self._shift_col_letter(match.group(1), insert_col, amount)
-            return f":${col}"
+        if EXTRACT_SHEET_NAME in workbook.sheetnames:
+            del workbook[EXTRACT_SHEET_NAME]
 
-        text = _DOLLAR_COL_DOLLAR.sub(repl_dcd, text)
-        text = _DOLLAR_COL_COLON.sub(repl_dcc, text)
-        text = _TRAILING_COLON_DOLLAR_COL.sub(repl_cdc, text)
-        return text
+        extract_ws = workbook.create_sheet(title=EXTRACT_SHEET_NAME[:31])
+        extract_ws.cell(row=HEADER_ROW, column=1, value=EXTRACT_TAB_NAME_HEADER)
+        extract_ws.cell(row=HEADER_ROW, column=2, value=EXTRACT_TAB_SSN_HEADER)
+
+        out_row = HEADER_ROW + 1
+        last_data_row = self._find_last_data_row(worksheet)
+        for row in range(HEADER_ROW + 1, last_data_row + 1):
+            if self._is_summary_row(worksheet, row):
+                continue
+            name_val = self._get_cell_value(worksheet, row, name_col)
+            if name_val is None or str(name_val).strip() == "":
+                continue
+            ssn_val = self._get_cell_value(worksheet, row, ssn_col) if ssn_col else None
+            extract_ws.cell(row=out_row, column=1, value=name_val)
+            extract_ws.cell(row=out_row, column=2, value=ssn_val)
+            out_row += 1
+
+        rows_written = out_row - HEADER_ROW - 1
+        logger.info(
+            "Created sheet %r with %s name/ssn rows (name col=%s, ssn col=%s)",
+            EXTRACT_SHEET_NAME,
+            rows_written,
+            name_col,
+            ssn_col,
+        )
+        return rows_written

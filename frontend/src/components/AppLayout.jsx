@@ -9,6 +9,11 @@ import {
 } from '@mui/material'
 import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined'
 
+/**
+ * Shared chrome: top app bar, centered content container, footer.
+ *
+ * @param {{ children: React.ReactNode }} props
+ */
 export default function AppLayout({ children }) {
   const location = useLocation()
   const isHome = location.pathname === '/'

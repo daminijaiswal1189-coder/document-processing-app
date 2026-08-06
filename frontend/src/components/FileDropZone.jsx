@@ -1,3 +1,10 @@
+/**
+ * Drag-and-drop / browse area for Excel, Word, and PDF files.
+ *
+ * Props:
+ *   multiple — allow stacking files (multi-upload on HomePage).
+ *   files / onFilesChange — controlled list of File objects.
+ */
 import { useCallback, useState } from 'react'
 import {
   Box,
@@ -15,14 +22,19 @@ import { ALLOWED_EXTENSIONS } from '../utils/constants'
 
 const TYPE_CHIPS = [
   { ext: '.xlsx', label: 'Excel', icon: <TableChartOutlinedIcon fontSize="small" /> },
+  { ext: '.xls', label: 'Excel (legacy)', icon: <TableChartOutlinedIcon fontSize="small" /> },
   { ext: '.docx', label: 'Word', icon: <ArticleOutlinedIcon fontSize="small" /> },
   { ext: '.pdf', label: 'PDF', icon: <PictureAsPdfOutlinedIcon fontSize="small" /> },
 ]
 
+/** Stable React key for a File (name + size + lastModified). */
 function fileKey(file) {
   return `${file.name}-${file.size}-${file.lastModified}`
 }
 
+/**
+ * FileDropZone — click or drag files; optional multi-select merge by fileKey.
+ */
 export default function FileDropZone({
   multiple = false,
   files = [],

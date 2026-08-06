@@ -6,4 +6,6 @@ storage/uploads/*
 storage/processed/*
 !storage/uploads/.gitkeep
 !storage/processed/.gitkeep
+logs/*
+!logs/.gitkeep
 .env

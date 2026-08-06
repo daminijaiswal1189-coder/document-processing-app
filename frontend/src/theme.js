@@ -1,3 +1,4 @@
+/** MUI theme shared by App (palette, typography, component defaults). */
 import { createTheme } from '@mui/material/styles'
 
 export const appTheme = createTheme({
