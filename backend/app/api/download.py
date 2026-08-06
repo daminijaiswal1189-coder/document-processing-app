@@ -1,3 +1,9 @@
+"""
+Download processed Excel files produced by POST /process/excel.
+
+Only serves files from storage/processed with safe basenames (no path traversal).
+"""
+
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
@@ -5,12 +11,18 @@ from app.utils.paths import PROCESSED_DIR
 
 router = APIRouter(tags=["download"])
 
+# MIME type for .xlsx responses.
 XLSX_MEDIA_TYPE = (
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 )
 
 
 def _is_safe_filename(filename: str) -> bool:
+    """
+    Reject empty names, path segments, and non-xlsx extensions.
+
+    Ensures PROCESSED_DIR / filename stays inside the processed folder.
+    """
     if not filename or filename != filename.strip():
         return False
     if ".." in filename or "/" in filename or "\\" in filename:
@@ -20,6 +32,12 @@ def _is_safe_filename(filename: str) -> bool:
 
 @router.get("/download/{filename}")
 def download_processed_excel(filename: str) -> FileResponse:
+    """
+    Stream a processed workbook to the browser.
+
+    Args:
+        filename: Typically ``processed_<uuid>.xlsx`` from ExcelProcessResponse.
+    """
     if not _is_safe_filename(filename):
         raise HTTPException(status_code=400, detail="Invalid filename")
 
@@ -31,4 +49,8 @@ def download_processed_excel(filename: str) -> FileResponse:
         path=file_path,
         filename=filename,
         media_type=XLSX_MEDIA_TYPE,
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate",
+            "Pragma": "no-cache",
+        },
     )

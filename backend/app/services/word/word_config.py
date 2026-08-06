@@ -1,8 +1,7 @@
 """
-Required text fragments for PDF validation (pdf_config).
+Required text fragments for Word validation (word_config).
 
-PdfValidatorService normalizes document and required strings, then checks substring presence.
-Edit these lists to match your real PDF template content.
+Same matching rules as PDF: normalized substring search via WordValidatorService.
 """
 
 REQUIRED_HEADINGS: list[str] = [

@@ -1,3 +1,11 @@
+/**
+ * Home page: ingest documents before processing.
+ *
+ * Flow:
+ *   1. User chooses upload file(s) OR server path.
+ *   2. POST /upload or POST /upload/path stores file in backend storage.
+ *   3. Navigate to /result with uploadResult; ResultPage calls /process/* by type.
+ */
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -8,25 +16,32 @@ import {
   CardContent,
   LinearProgress,
   Stack,
+  TextField,
   ToggleButton,
   ToggleButtonGroup,
   Typography,
 } from '@mui/material'
 import CloudUploadIcon from '@mui/icons-material/CloudUpload'
+import FolderOpenIcon from '@mui/icons-material/FolderOpen'
 import VerifiedUserOutlinedIcon from '@mui/icons-material/VerifiedUserOutlined'
 import LooksOneIcon from '@mui/icons-material/LooksOne'
 import LibraryBooksOutlinedIcon from '@mui/icons-material/LibraryBooksOutlined'
 import FileDropZone from '../components/FileDropZone'
-import { uploadDocument, uploadDocuments } from '../services/uploadApi'
+import { uploadDocument, uploadDocuments, registerDocumentPath } from '../services/uploadApi'
 import {
   ALLOWED_EXTENSIONS,
   isAllowedExtension,
   MAX_MULTI_UPLOAD,
 } from '../utils/constants'
 
+/**
+ * Landing page with file drop zone, server path input, and upload actions.
+ */
 export default function HomePage() {
   const navigate = useNavigate()
   const [uploadMode, setUploadMode] = useState('single')
+  const [inputMode, setInputMode] = useState('file')
+  const [localPath, setLocalPath] = useState('')
   const [files, setFiles] = useState([])
   const [status, setStatus] = useState('idle')
   const [errorMessage, setErrorMessage] = useState('')
@@ -39,12 +54,31 @@ export default function HomePage() {
     if (next === null) return
     setUploadMode(next)
     setFiles([])
+    setLocalPath('')
     setStatus('idle')
     setErrorMessage('')
     setUploadProgress(null)
   }
 
+  const handleInputModeChange = (_event, next) => {
+    if (next === null) return
+    setInputMode(next)
+    setFiles([])
+    setLocalPath('')
+    setErrorMessage('')
+  }
+
   const validateFiles = () => {
+    if (inputMode === 'path') {
+      if (!localPath.trim()) {
+        return 'Enter a file path on the server.'
+      }
+      const name = localPath.trim().split(/[/\\]/).pop() ?? ''
+      if (!isAllowedExtension(name)) {
+        return `Invalid type. Allowed: ${ALLOWED_EXTENSIONS.join(', ')}`
+      }
+      return null
+    }
     if (files.length === 0) {
       return 'Please choose at least one file.'
     }
@@ -74,6 +108,22 @@ export default function HomePage() {
     setUploadProgress(null)
 
     try {
+      if (inputMode === 'path') {
+        const result = await registerDocumentPath(localPath)
+        const displayName =
+          result.data?.source_path?.split(/[/\\]/).pop() ?? localPath.trim()
+        navigate('/result', {
+          state: {
+            mode: 'single',
+            originalFilename: displayName,
+            uploadResult: result,
+            fileSize: null,
+            sourcePath: result.data?.source_path ?? localPath.trim(),
+          },
+        })
+        return
+      }
+
       if (multiple) {
         const uploads = await uploadDocuments(files, (p) => setUploadProgress(p))
         navigate('/result', { state: { mode: 'multi', uploads } })
@@ -121,37 +171,72 @@ export default function HomePage() {
             <Stack alignItems="center" spacing={1}>
               <ToggleButtonGroup
                 exclusive
-                value={uploadMode}
-                onChange={handleModeChange}
+                value={inputMode}
+                onChange={handleInputModeChange}
                 size="small"
                 color="primary"
                 disabled={uploading}
               >
-                <ToggleButton value="single">
-                  <LooksOneIcon sx={{ mr: 0.5 }} fontSize="small" />
-                  Single file
+                <ToggleButton value="file">
+                  <CloudUploadIcon sx={{ mr: 0.5 }} fontSize="small" />
+                  Upload file
                 </ToggleButton>
-                <ToggleButton value="multi">
-                  <LibraryBooksOutlinedIcon sx={{ mr: 0.5 }} fontSize="small" />
-                  Multiple files
+                <ToggleButton value="path">
+                  <FolderOpenIcon sx={{ mr: 0.5 }} fontSize="small" />
+                  Server path
                 </ToggleButton>
               </ToggleButtonGroup>
+
+              {inputMode === 'file' && (
+                <ToggleButtonGroup
+                  exclusive
+                  value={uploadMode}
+                  onChange={handleModeChange}
+                  size="small"
+                  color="primary"
+                  disabled={uploading}
+                >
+                  <ToggleButton value="single">
+                    <LooksOneIcon sx={{ mr: 0.5 }} fontSize="small" />
+                    Single file
+                  </ToggleButton>
+                  <ToggleButton value="multi">
+                    <LibraryBooksOutlinedIcon sx={{ mr: 0.5 }} fontSize="small" />
+                    Multiple files
+                  </ToggleButton>
+                </ToggleButtonGroup>
+              )}
+
               <Stack direction="row" spacing={1} alignItems="center">
                 <VerifiedUserOutlinedIcon color="action" fontSize="small" />
-                <Typography variant="subtitle2" color="text.secondary">
-                  {multiple
-                    ? `Up to ${MAX_MULTI_UPLOAD} files · Local processing only`
-                    : 'One file per upload · Local processing only'}
+                <Typography variant="subtitle2" color="text.secondary" textAlign="center">
+                  {inputMode === 'path'
+                    ? 'Path is read on the server: project folder, your home folder, or an absolute path'
+                    : multiple
+                      ? `Up to ${MAX_MULTI_UPLOAD} files · Local processing only`
+                      : 'One file per upload · Local processing only'}
                 </Typography>
               </Stack>
             </Stack>
 
-            <FileDropZone
-              multiple={multiple}
-              files={files}
-              onFilesChange={setFiles}
-              disabled={uploading}
-            />
+            {inputMode === 'file' ? (
+              <FileDropZone
+                multiple={multiple}
+                files={files}
+                onFilesChange={setFiles}
+                disabled={uploading}
+              />
+            ) : (
+              <TextField
+                label="Document path on server"
+                placeholder="samples/2024helpwc 000012.xlsx"
+                value={localPath}
+                onChange={(e) => setLocalPath(e.target.value)}
+                disabled={uploading}
+                fullWidth
+                helperText="Absolute path (e.g. under Documents) or relative to POC-APP. Excel (.xlsx, .xls), Word, or PDF."
+              />
+            )}
 
             {uploading && (
               <Stack spacing={1}>
@@ -169,16 +254,21 @@ export default function HomePage() {
               variant="contained"
               size="large"
               fullWidth
-              startIcon={<CloudUploadIcon />}
+              startIcon={inputMode === 'path' ? <FolderOpenIcon /> : <CloudUploadIcon />}
               onClick={handleUpload}
-              disabled={files.length === 0 || uploading}
+              disabled={
+                uploading ||
+                (inputMode === 'file' ? files.length === 0 : !localPath.trim())
+              }
               sx={{ py: 1.5 }}
             >
               {uploading
-                ? 'Uploading…'
-                : multiple
-                  ? `Upload ${files.length} file${files.length === 1 ? '' : 's'} & continue`
-                  : 'Upload & continue'}
+                ? 'Working…'
+                : inputMode === 'path'
+                  ? 'Use path & continue'
+                  : multiple
+                    ? `Upload ${files.length} file${files.length === 1 ? '' : 's'} & continue`
+                    : 'Upload & continue'}
             </Button>
           </Stack>
         </CardContent>

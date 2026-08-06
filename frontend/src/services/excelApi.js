@@ -1,3 +1,6 @@
+/**
+ * POST /process/excel — adds POC Status column and returns download metadata.
+ */
 import axios from 'axios'
 import { API_BASE_URL } from '../utils/constants'
 
@@ -5,15 +8,30 @@ const api = axios.create({
   baseURL: API_BASE_URL,
 })
 
+/**
+ * @param {string} filename - Stored upload basename (UUID.xlsx) from UploadResponse.
+ * @returns {Promise<object>} ExcelProcessResponse with download_url and details.
+ */
 export async function processExcel(filename) {
   const { data } = await api.post('/process/excel', { filename })
   return data
 }
 
-export async function downloadProcessedExcel(processedFilename) {
-  const { data } = await api.get(`/download/${encodeURIComponent(processedFilename)}`, {
-    responseType: 'blob',
-  })
+/**
+ * Download processed workbook from GET /download/{processed_filename}.
+ *
+ * @param {string} processedFilename - e.g. processed_<uuid>.xlsx
+ * @param {number|string} [cacheBust] - Query param to avoid browser cache reuse.
+ */
+export async function downloadProcessedExcel(processedFilename, cacheBust) {
+  const version =
+    cacheBust != null && cacheBust !== '' ? cacheBust : Date.now()
+  const { data } = await api.get(
+    `/download/${encodeURIComponent(processedFilename)}?v=${encodeURIComponent(version)}`,
+    {
+      responseType: 'blob',
+    },
+  )
 
   const blobUrl = window.URL.createObjectURL(data)
   const link = document.createElement('a')
