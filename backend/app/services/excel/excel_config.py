@@ -18,7 +18,8 @@ EXTRACT_TAB_SSN_HEADER = "ssn"
 SOURCE_NAME_HEADERS = ("name",)
 SOURCE_SSN_HEADERS = ("ss#", "ssn", "social security", "social security number")
 
-# Light red fill applied to cells whose value is FALSE or NA on processed rows.
+# Light red fill applied to FALSE / NA — only in this one column (header match, case-insensitive).
+FALSE_NA_COLUMN_HEADERS = ("match_dob",)
 FALSE_NA_FILL_RGB = "FFFFC7CE"
 
 # When Excel is processed via upload, also apply transforms in-place on this workbook.
