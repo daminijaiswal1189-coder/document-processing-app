@@ -15,6 +15,7 @@ from fastapi import APIRouter, HTTPException
 from app.models.excel import ExcelProcessDetails, ExcelProcessRequest, ExcelProcessResponse
 from app.services.excel.excel_processor import ExcelProcessor
 from app.services.excel.static_inplace_excel import apply_changes_to_static_workbook
+from app.services.storage_cleanup import cleanup_after_successful_process
 from app.utils.paths import PROCESSED_DIR, UPLOADS_DIR
 
 logger = logging.getLogger(__name__)
@@ -69,6 +70,8 @@ def process_excel(body: ExcelProcessRequest) -> ExcelProcessResponse:
     except Exception as exc:
         logger.exception("Excel processing failed for %s", filename)
         raise HTTPException(status_code=500, detail="Excel processing failed") from exc
+
+    cleanup_after_successful_process(filename)
 
     message = "Excel processed successfully"
     if inplace and inplace.get("inplace_updated"):

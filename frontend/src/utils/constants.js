@@ -13,6 +13,13 @@ export const ALLOWED_EXTENSIONS = ['.xlsx', '.xls', '.docx', '.pdf']
 export const MAX_MULTI_UPLOAD = 20
 
 /**
+ * When true (default), Excel files auto-download in the browser after POST /process/excel.
+ * Set VITE_AUTO_DOWNLOAD_EXCEL=false at build time to disable globally.
+ */
+export const AUTO_DOWNLOAD_EXCEL_AFTER_PROCESS =
+  import.meta.env.VITE_AUTO_DOWNLOAD_EXCEL !== 'false'
+
+/**
  * @param {string} filename - Original file name from the user's machine.
  * @returns {boolean} True if the name ends with an allowed extension.
  */

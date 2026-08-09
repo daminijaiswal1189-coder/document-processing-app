@@ -13,6 +13,7 @@ from fastapi import APIRouter, HTTPException
 
 from app.models.validation import DocumentProcessRequest, PdfValidationResponse
 from app.services.pdf.pdf_validator import PdfValidatorService
+from app.services.storage_cleanup import cleanup_after_successful_process
 from app.utils.paths import UPLOADS_DIR
 
 logger = logging.getLogger(__name__)
@@ -47,6 +48,8 @@ def process_pdf(body: DocumentProcessRequest) -> PdfValidationResponse:
     except Exception as exc:
         logger.exception("PDF validation failed for %s", filename)
         raise HTTPException(status_code=500, detail="PDF validation failed") from exc
+
+    cleanup_after_successful_process(filename)
 
     status = result["status"]
     return PdfValidationResponse(

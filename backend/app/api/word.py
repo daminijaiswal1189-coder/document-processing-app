@@ -10,6 +10,7 @@ import time
 from fastapi import APIRouter, HTTPException
 
 from app.models.word import WordProcessRequest, WordValidationResponse
+from app.services.storage_cleanup import cleanup_after_successful_process
 from app.services.word.word_validator import WordValidatorService
 from app.utils.paths import UPLOADS_DIR
 
@@ -45,6 +46,8 @@ def process_word(body: WordProcessRequest) -> WordValidationResponse:
     except Exception as exc:
         logger.exception("Word validation failed for %s", filename)
         raise HTTPException(status_code=500, detail="Word validation failed") from exc
+
+    cleanup_after_successful_process(filename)
 
     status = result["status"]
     return WordValidationResponse(
