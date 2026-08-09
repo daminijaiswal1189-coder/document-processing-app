@@ -42,3 +42,14 @@ export async function downloadProcessedExcel(processedFilename, cacheBust) {
   link.remove()
   window.URL.revokeObjectURL(blobUrl)
 }
+
+/**
+ * Trigger browser download for a processed Excel result (file stays on server).
+ */
+export async function downloadProcessedExcelResult(excelResult) {
+  if (!excelResult?.processed_filename) return
+  await downloadProcessedExcel(
+    excelResult.processed_filename,
+    excelResult.processing_time_ms ?? Date.now(),
+  )
+}

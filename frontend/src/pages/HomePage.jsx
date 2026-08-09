@@ -14,6 +14,8 @@ import {
   Button,
   Card,
   CardContent,
+  Checkbox,
+  FormControlLabel,
   LinearProgress,
   Stack,
   TextField,
@@ -30,6 +32,7 @@ import FileDropZone from '../components/FileDropZone'
 import { uploadDocument, uploadDocuments, registerDocumentPath } from '../services/uploadApi'
 import {
   ALLOWED_EXTENSIONS,
+  AUTO_DOWNLOAD_EXCEL_AFTER_PROCESS,
   isAllowedExtension,
   MAX_MULTI_UPLOAD,
 } from '../utils/constants'
@@ -46,6 +49,7 @@ export default function HomePage() {
   const [status, setStatus] = useState('idle')
   const [errorMessage, setErrorMessage] = useState('')
   const [uploadProgress, setUploadProgress] = useState(null)
+  const [autoDownloadExcel, setAutoDownloadExcel] = useState(AUTO_DOWNLOAD_EXCEL_AFTER_PROCESS)
 
   const uploading = status === 'uploading'
   const multiple = uploadMode === 'multi'
@@ -119,6 +123,7 @@ export default function HomePage() {
             uploadResult: result,
             fileSize: null,
             sourcePath: result.data?.source_path ?? localPath.trim(),
+            autoDownloadExcel,
           },
         })
         return
@@ -126,7 +131,7 @@ export default function HomePage() {
 
       if (multiple) {
         const uploads = await uploadDocuments(files, (p) => setUploadProgress(p))
-        navigate('/result', { state: { mode: 'multi', uploads } })
+        navigate('/result', { state: { mode: 'multi', uploads, autoDownloadExcel } })
       } else {
         const result = await uploadDocument(files[0])
         navigate('/result', {
@@ -135,6 +140,7 @@ export default function HomePage() {
             originalFilename: files[0].name,
             uploadResult: result,
             fileSize: files[0].size,
+            autoDownloadExcel,
           },
         })
       }
@@ -248,6 +254,22 @@ export default function HomePage() {
                   </Typography>
                 )}
               </Stack>
+            )}
+
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={autoDownloadExcel}
+                  onChange={(e) => setAutoDownloadExcel(e.target.checked)}
+                  disabled={uploading || !AUTO_DOWNLOAD_EXCEL_AFTER_PROCESS}
+                />
+              }
+              label="Auto-download processed Excel when ready"
+            />
+            {!AUTO_DOWNLOAD_EXCEL_AFTER_PROCESS && (
+              <Typography variant="caption" color="text.secondary">
+                Auto-download is disabled in this build (VITE_AUTO_DOWNLOAD_EXCEL=false).
+              </Typography>
             )}
 
             <Button

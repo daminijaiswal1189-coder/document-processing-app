@@ -35,9 +35,10 @@ import TableChartOutlinedIcon from '@mui/icons-material/TableChartOutlined'
 import ArticleOutlinedIcon from '@mui/icons-material/ArticleOutlined'
 import PictureAsPdfOutlinedIcon from '@mui/icons-material/PictureAsPdfOutlined'
 import RefreshIcon from '@mui/icons-material/Refresh'
-import { downloadProcessedExcel, processExcel } from '../services/excelApi'
+import { downloadProcessedExcelResult, processExcel } from '../services/excelApi'
 import { processPdf } from '../services/pdfApi'
 import { processWord } from '../services/wordApi'
+import { AUTO_DOWNLOAD_EXCEL_AFTER_PROCESS } from '../utils/constants'
 
 /** UI metadata for upload document_type chips on the result page. */
 const TYPE_LABELS = {
@@ -232,6 +233,7 @@ function ExcelProcessCard({
   downloading,
   onRetry,
   onDownload,
+  autoDownloadExcel,
 }) {
   return (
     <Card elevation={2}>
@@ -261,6 +263,13 @@ function ExcelProcessCard({
         {excelStatus === 'done' && excelResult && (
           <Stack spacing={2}>
             <Alert severity="success">{excelResult.message}</Alert>
+            {autoDownloadExcel && (
+              <Alert severity="info">
+                {downloading
+                  ? 'Downloading processed Excel…'
+                  : 'Processed Excel was downloaded automatically (if your browser allows downloads).'}
+              </Alert>
+            )}
             <TableContainer>
               <Table size="small">
                 <TableBody>
@@ -321,7 +330,14 @@ function ExcelProcessCard({
   )
 }
 
-function SingleResultView({ originalFilename, uploadResult, fileSize, sourcePath, navigate }) {
+function SingleResultView({
+  originalFilename,
+  uploadResult,
+  fileSize,
+  sourcePath,
+  navigate,
+  autoDownloadExcel = false,
+}) {
   const [excelStatus, setExcelStatus] = useState('idle')
   const [excelResult, setExcelResult] = useState(null)
   const [excelError, setExcelError] = useState('')
@@ -352,13 +368,23 @@ function SingleResultView({ originalFilename, uploadResult, fileSize, sourcePath
       const result = await processExcel(storedFilename)
       setExcelResult(result)
       setExcelStatus('done')
+      if (autoDownloadExcel && result.processed_filename) {
+        setDownloading(true)
+        try {
+          await downloadProcessedExcelResult(result)
+        } catch (dlErr) {
+          setExcelError(apiErrorMessage(dlErr, 'Auto-download failed.'))
+        } finally {
+          setDownloading(false)
+        }
+      }
     } catch (err) {
       setExcelStatus('error')
       setExcelError(
         apiErrorMessage(err, 'Excel processing failed.'),
       )
     }
-  }, [storedFilename])
+  }, [storedFilename, autoDownloadExcel])
 
   const runPdfValidation = useCallback(async () => {
     if (!storedFilename) return
@@ -427,10 +453,7 @@ function SingleResultView({ originalFilename, uploadResult, fileSize, sourcePath
     if (!excelResult?.processed_filename) return
     setDownloading(true)
     try {
-      await downloadProcessedExcel(
-        excelResult.processed_filename,
-        excelResult.processing_time_ms ?? Date.now(),
-      )
+      await downloadProcessedExcelResult(excelResult)
     } catch (err) {
       setExcelError(apiErrorMessage(err, 'Download failed.'))
     } finally {
@@ -485,6 +508,7 @@ function SingleResultView({ originalFilename, uploadResult, fileSize, sourcePath
           downloading={downloading}
           onRetry={runExcelProcess}
           onDownload={handleDownload}
+          autoDownloadExcel={autoDownloadExcel}
         />
       )}
 
@@ -542,7 +566,7 @@ function ProcessStatusCell({ status, validationResult }) {
   return null
 }
 
-function MultiResultView({ uploads, navigate }) {
+function MultiResultView({ uploads, navigate, autoDownloadExcel = false }) {
   const [items, setItems] = useState(() =>
     uploads.map((u, index) => {
       const docType = u.uploadResult?.data?.document_type ?? 'unknown'
@@ -583,6 +607,9 @@ function MultiResultView({ uploads, navigate }) {
                   : row,
               ),
             )
+            if (autoDownloadExcel && result.processed_filename) {
+              await downloadProcessedExcelResult(result).catch(() => {})
+            }
           } catch (err) {
             if (cancelled) return
             setItems((prev) =>
@@ -674,7 +701,7 @@ function MultiResultView({ uploads, navigate }) {
     return () => {
       cancelled = true
     }
-  }, [uploads])
+  }, [uploads, autoDownloadExcel])
 
   const retryExcel = async (index) => {
     const stored = items[index].uploadResult?.data?.filename
@@ -691,6 +718,9 @@ function MultiResultView({ uploads, navigate }) {
           idx === index ? { ...row, excel: { status: 'done', result, error: '' } } : row,
         ),
       )
+      if (autoDownloadExcel && result.processed_filename) {
+        await downloadProcessedExcelResult(result).catch(() => {})
+      }
     } catch (err) {
       setItems((prev) =>
         prev.map((row, idx) =>
@@ -836,12 +866,7 @@ function MultiResultView({ uploads, navigate }) {
                             <Button
                               size="small"
                               startIcon={<DownloadIcon />}
-                              onClick={() =>
-                                downloadProcessedExcel(
-                                  item.excel.result.processed_filename,
-                                  item.excel.result.processing_time_ms ?? Date.now(),
-                                )
-                              }
+                              onClick={() => downloadProcessedExcelResult(item.excel.result)}
                             >
                               Download
                             </Button>
@@ -952,8 +977,19 @@ export default function ResultPage() {
 
   const mode = state.mode ?? (state.uploadResult ? 'single' : null)
 
+  const autoDownloadExcel =
+    state.autoDownloadExcel !== undefined
+      ? state.autoDownloadExcel === true
+      : AUTO_DOWNLOAD_EXCEL_AFTER_PROCESS
+
   if (mode === 'multi' && state.uploads?.length) {
-    return <MultiResultView uploads={state.uploads} navigate={navigate} />
+    return (
+      <MultiResultView
+        uploads={state.uploads}
+        navigate={navigate}
+        autoDownloadExcel={autoDownloadExcel}
+      />
+    )
   }
 
   if (mode === 'single' && state.originalFilename && state.uploadResult) {
@@ -964,6 +1000,7 @@ export default function ResultPage() {
         fileSize={state.fileSize}
         sourcePath={state.sourcePath}
         navigate={navigate}
+        autoDownloadExcel={autoDownloadExcel}
       />
     )
   }

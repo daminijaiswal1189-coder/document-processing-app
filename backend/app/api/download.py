@@ -2,6 +2,7 @@
 Download processed Excel files produced by POST /process/excel.
 
 Only serves files from storage/processed with safe basenames (no path traversal).
+Processed files are kept on disk so users can download again from the result page.
 """
 
 from fastapi import APIRouter, HTTPException
