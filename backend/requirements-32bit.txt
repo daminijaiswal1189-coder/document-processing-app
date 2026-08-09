@@ -3,6 +3,13 @@
 #
 # PyMuPDF does not reliably support 32-bit Windows. PDF POC uses pypdf (text extraction only).
 # Excel + Word match the main POC stack.
+#
+# Performance note (Excel):
+#   32-bit Python is limited to ~2GB process memory. openpyxl loads the whole workbook,
+#   so large Helpwc files are much slower than on 64-bit Python. Prefer 64-bit Python
+#   for demos with large Excel. On 32-bit the app auto-disables the second data_only
+#   cache pass and static in-place update (override with env POC_LOAD_FALSE_NA_CACHE=1
+#   / POC_ENABLE_STATIC_INPLACE=1 if needed).
 
 fastapi>=0.115.0
 uvicorn[standard]>=0.32.0

@@ -28,6 +28,8 @@ from app.services.excel.excel_config import (
     FALSE_NA_COLUMN_HEADERS,
     FALSE_NA_FILL_RGB,
     HEADER_ROW,
+    IS_32BIT_PYTHON,
+    LOAD_FALSE_NA_DATA_ONLY_CACHE,
     NEW_COLUMN_DEFAULT_VALUE,
     NEW_COLUMN_HEADER,
     SOURCE_NAME_HEADERS,
@@ -71,6 +73,11 @@ class ExcelProcessor:
             convert_xls_to_xlsx(source_path, work_path)
 
         try:
+            if IS_32BIT_PYTHON:
+                logger.info(
+                    "32-bit Python detected — using lighter Excel path "
+                    "(skip data_only cache unless POC_LOAD_FALSE_NA_CACHE=1)"
+                )
             cached_false_na = self._load_false_na_column_cache(work_path)
             workbook = load_workbook(work_path, data_only=False)
             worksheet = workbook.active
@@ -153,9 +160,13 @@ class ExcelProcessor:
         """
         Stream cached calculated values for the FALSE/NA column (read_only + data_only).
 
-        Faster than a second full in-memory workbook load for large sheets.
+        Skipped when LOAD_FALSE_NA_DATA_ONLY_CACHE is False (default on 32-bit) to avoid
+        a second workbook open that often doubles time/memory on Windows 32-bit Python.
         """
         cache: dict[int, object] = {}
+        if not LOAD_FALSE_NA_DATA_ONLY_CACHE:
+            logger.info("Skipping FALSE/NA data_only cache load (fast path)")
+            return cache
         try:
             values_wb = load_workbook(path, read_only=True, data_only=True)
         except Exception:
