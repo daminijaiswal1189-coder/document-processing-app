@@ -55,11 +55,15 @@ function formatBytes(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-/** Format API processing_time_ms for display. */
+/** Format API processing_time_ms for display (ms → s → m). */
 function formatProcessingTime(ms) {
   if (ms == null || Number.isNaN(ms)) return '—'
   if (ms < 1000) return `${Math.round(ms)} ms`
-  return `${(ms / 1000).toFixed(2)} s`
+  const seconds = ms / 1000
+  if (seconds <= 60) return `${seconds.toFixed(2)} s`
+  const minutes = Math.floor(seconds / 60)
+  const remSeconds = seconds % 60
+  return `${minutes} m ${remSeconds.toFixed(1)} s`
 }
 
 /** Extract FastAPI error detail string from an axios error. */

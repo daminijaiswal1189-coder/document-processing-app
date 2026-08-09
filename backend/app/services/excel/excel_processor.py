@@ -4,11 +4,12 @@ Excel processing: append POC Status and highlight FALSE/NA cells.
 Flow:
   1. Load workbook from storage/uploads (.xlsx directly, or convert .xls first).
   2. Add a new column at the end with header POC Status.
-  3. For each data row (non-summary, has content), set Processed and red-fill FALSE/NA cells.
+  3. For each data row (non-summary, has content), set Processed and red-fill FALSE/NA
+     in one configured column (default Match_DOB).
   4. Add worksheet ``Name and SSN`` with columns name and ssn copied from the source sheet.
   5. Save to storage/processed/processed_<uuid>.xlsx.
 
-Uses worksheet._cells for reads where possible to avoid creating empty cells.
+Uses a single index pass over worksheet cells (avoids O(rows × cells) scans).
 """
 
 import logging
@@ -24,6 +25,7 @@ from app.services.excel.excel_config import (
     EXTRACT_SHEET_NAME,
     EXTRACT_TAB_NAME_HEADER,
     EXTRACT_TAB_SSN_HEADER,
+    FALSE_NA_COLUMN_HEADERS,
     FALSE_NA_FILL_RGB,
     HEADER_ROW,
     NEW_COLUMN_DEFAULT_VALUE,
@@ -35,7 +37,6 @@ from app.services.excel.xls_converter import convert_xls_to_xlsx
 
 logger = logging.getLogger(__name__)
 
-# Reused PatternFill for FALSE / NA highlighting (copied per cell).
 _RED_FILL = PatternFill(fill_type="solid", fgColor=FALSE_NA_FILL_RGB)
 
 
@@ -70,9 +71,11 @@ class ExcelProcessor:
             convert_xls_to_xlsx(source_path, work_path)
 
         try:
+            cached_false_na = self._load_false_na_column_cache(work_path)
             workbook = load_workbook(work_path, data_only=False)
             worksheet = workbook.active
-            result = self._apply_transforms(workbook, worksheet)
+            result = self._apply_transforms(workbook, worksheet, cached_false_na)
+            self._mark_workbook_for_recalc(workbook)
 
             output_path.parent.mkdir(parents=True, exist_ok=True)
             workbook.save(output_path)
@@ -97,12 +100,6 @@ class ExcelProcessor:
 
         Uses a temporary file in the same directory, then atomic replace, to reduce
         risk of a partial write if save fails.
-
-        Args:
-            target_path: Existing .xlsx on disk (must be writable).
-
-        Returns:
-            Transform metadata (sheet name, column index, counts).
         """
         if not target_path.is_file():
             raise FileNotFoundError(f"Target file not found: {target_path}")
@@ -111,10 +108,12 @@ class ExcelProcessor:
 
         logger.info("In-place Excel update: %s", target_path)
 
+        cached_false_na = self._load_false_na_column_cache(target_path)
         workbook = load_workbook(target_path, data_only=False)
         try:
             worksheet = workbook.active
-            result = self._apply_transforms(workbook, worksheet)
+            result = self._apply_transforms(workbook, worksheet, cached_false_na)
+            self._mark_workbook_for_recalc(workbook)
 
             fd, tmp_name = tempfile.mkstemp(
                 suffix=".xlsx",
@@ -140,21 +139,116 @@ class ExcelProcessor:
         finally:
             workbook.close()
 
-    def _apply_transforms(self, workbook, worksheet) -> dict[str, str | int]:
-        """POC Status column, FALSE/NA highlighting, and Name/SSN extract sheet."""
+    def _mark_workbook_for_recalc(self, workbook) -> None:
+        """Tell Excel to recalculate all formulas when the file is opened."""
+        calc = workbook.calculation
+        calc.calcMode = "auto"
+        calc.fullCalcOnLoad = True
+        calc.forceFullCalc = True
+        calc.calcCompleted = False
+        calc.calcOnSave = False
+        calc.calcId = 0
+
+    def _load_false_na_column_cache(self, path: Path) -> dict[int, object]:
+        """
+        Stream cached calculated values for the FALSE/NA column (read_only + data_only).
+
+        Faster than a second full in-memory workbook load for large sheets.
+        """
+        cache: dict[int, object] = {}
+        try:
+            values_wb = load_workbook(path, read_only=True, data_only=True)
+        except Exception:
+            logger.exception("Could not load data_only cache from %s", path.name)
+            return cache
+        try:
+            ws = values_wb.active
+            header_row = next(ws.iter_rows(min_row=HEADER_ROW, max_row=HEADER_ROW), None)
+            if header_row is None:
+                return cache
+            needles = {name.strip().lower() for name in FALSE_NA_COLUMN_HEADERS}
+            col_idx = None
+            for idx, cell in enumerate(header_row, start=1):
+                if cell.value is None:
+                    continue
+                if str(cell.value).strip().lower() in needles:
+                    col_idx = idx
+                    break
+            if col_idx is None:
+                return cache
+            for row_idx, row in enumerate(
+                ws.iter_rows(min_row=HEADER_ROW + 1, min_col=col_idx, max_col=col_idx),
+                start=HEADER_ROW + 1,
+            ):
+                cache[row_idx] = row[0].value
+            logger.info(
+                "Cached %s FALSE/NA values for column %s (read_only)",
+                len(cache),
+                FALSE_NA_COLUMN_HEADERS,
+            )
+            return cache
+        finally:
+            values_wb.close()
+
+    def _index_worksheet(self, worksheet) -> tuple[int, set[int], set[int]]:
+        """
+        One pass over existing cells.
+
+        Returns:
+            (last_data_row, rows_with_content, summary_rows)
+        """
+        last_row = HEADER_ROW
+        content_rows: set[int] = set()
+        summary_rows: set[int] = set()
+        for (row, col), cell in worksheet._cells.items():
+            if row <= HEADER_ROW:
+                continue
+            if self._cell_has_meaningful_content(cell):
+                last_row = max(last_row, row)
+                content_rows.add(row)
+            if col <= 5 and cell.value is not None:
+                if "total" in str(cell.value).strip().lower():
+                    summary_rows.add(row)
+        return max(last_row, HEADER_ROW + 1), content_rows, summary_rows
+
+    def _apply_transforms(
+        self,
+        workbook,
+        worksheet,
+        cached_false_na: dict[int, object] | None = None,
+    ) -> dict[str, str | int]:
+        """POC Status column, FALSE/NA highlighting (one column), and Name/SSN extract sheet."""
         new_col = self._resolve_or_create_poc_column(worksheet)
+        false_na_col = self._find_header_column(worksheet, FALSE_NA_COLUMN_HEADERS)
+        if false_na_col is None:
+            logger.warning(
+                "FALSE/NA highlight column not found (expected one of %s); skipping fills",
+                FALSE_NA_COLUMN_HEADERS,
+            )
+
+        last_data_row, content_rows, summary_rows = self._index_worksheet(worksheet)
 
         rows_updated = 0
         cells_filled_red = 0
-        last_data_row = self._find_last_data_row(worksheet)
         for row in range(HEADER_ROW + 1, last_data_row + 1):
-            if not self._row_should_receive_value(worksheet, row):
+            if row in summary_rows or row not in content_rows:
                 continue
             worksheet.cell(row=row, column=new_col, value=NEW_COLUMN_DEFAULT_VALUE)
-            cells_filled_red += self._fill_color_in_cell(worksheet, row)
+            if false_na_col is not None:
+                check_value = None
+                if cached_false_na is not None and row in cached_false_na:
+                    check_value = cached_false_na[row]
+                cells_filled_red += self._fill_false_na_in_column(
+                    worksheet, row, false_na_col, check_value=check_value
+                )
             rows_updated += 1
 
-        name_ssn_rows = self._create_name_ssn_sheet(workbook, worksheet)
+        name_ssn_rows = self._create_name_ssn_sheet(
+            workbook,
+            worksheet,
+            last_data_row=last_data_row,
+            summary_rows=summary_rows,
+        )
         sheet_name = worksheet.title
 
         return {
@@ -179,24 +273,24 @@ class ExcelProcessor:
         worksheet.cell(row=HEADER_ROW, column=new_col, value=NEW_COLUMN_HEADER)
         return new_col
 
-    def _fill_color_in_cell(self, worksheet, row: int) -> int:
-        """
-        Apply red fill to existing cells on ``row`` whose value is FALSE or NA.
-
-        Only touches cells already present in worksheet._cells.
-
-        Returns:
-            Number of cells that received the red fill.
-        """
-        filled = 0
-        for (cell_row, _col), cell in worksheet._cells.items():
-            if cell_row != row:
-                continue
-            if not self._is_false_or_na_value(cell.value):
-                continue
-            cell.fill = copy(_RED_FILL)
-            filled += 1
-        return filled
+    def _fill_false_na_in_column(
+        self,
+        worksheet,
+        row: int,
+        col: int,
+        check_value=None,
+    ) -> int:
+        """Apply red fill on ``row`` only in ``col`` when that cell is FALSE or NA."""
+        cell = worksheet._cells.get((row, col))
+        if cell is None:
+            if check_value is None or not self._is_false_or_na_value(check_value):
+                return 0
+            cell = worksheet.cell(row=row, column=col)
+        value = check_value if check_value is not None else cell.value
+        if not self._is_false_or_na_value(value):
+            return 0
+        cell.fill = copy(_RED_FILL)
+        return 1
 
     def _is_false_or_na_value(self, value) -> bool:
         """True for boolean False or string false / na / n/a (case-insensitive)."""
@@ -206,16 +300,6 @@ class ExcelProcessor:
             return False
         text = str(value).strip().lower()
         return text in {"false", "na", "n/a"}
-
-    def _find_last_data_row(self, worksheet) -> int:
-        """Last row index that contains any formula or non-empty value (scan existing cells)."""
-        last_row = HEADER_ROW
-        for (row, _col), cell in worksheet._cells.items():
-            if row <= HEADER_ROW:
-                continue
-            if self._cell_has_meaningful_content(cell):
-                last_row = max(last_row, row)
-        return max(last_row, HEADER_ROW + 1)
 
     def _cell_has_meaningful_content(self, cell) -> bool:
         """True if the cell has a formula or non-blank scalar value."""
@@ -232,35 +316,6 @@ class ExcelProcessor:
             return None
         return cell.value
 
-    def _row_should_receive_value(self, worksheet, row: int) -> bool:
-        """
-        Decide whether this row gets POC Status = Processed.
-
-        Skips summary rows; requires at least one meaningful cell on the row.
-        """
-        if self._is_summary_row(worksheet, row):
-            return False
-        return self._row_has_meaningful_content(worksheet, row)
-
-    def _row_has_meaningful_content(self, worksheet, row: int) -> bool:
-        """True if any existing cell on ``row`` has meaningful content."""
-        for (_row, _col), cell in worksheet._cells.items():
-            if _row != row:
-                continue
-            if self._cell_has_meaningful_content(cell):
-                return True
-        return False
-
-    def _is_summary_row(self, worksheet, row: int) -> bool:
-        """True when columns A–E contain a label with 'total' (case-insensitive)."""
-        for col in range(1, min(worksheet.max_column, 5) + 1):
-            value = self._get_cell_value(worksheet, row, col)
-            if value is None:
-                continue
-            if "total" in str(value).strip().lower():
-                return True
-        return False
-
     def _find_header_column(self, worksheet, header_names: tuple[str, ...]) -> int | None:
         """Return 1-based column index whose row-1 header matches one of ``header_names``."""
         needles = {name.strip().lower() for name in header_names}
@@ -272,14 +327,17 @@ class ExcelProcessor:
                 return col
         return None
 
-    def _create_name_ssn_sheet(self, workbook, worksheet) -> int:
+    def _create_name_ssn_sheet(
+        self,
+        workbook,
+        worksheet,
+        last_data_row: int | None = None,
+        summary_rows: set[int] | None = None,
+    ) -> int:
         """
         Add a tab with columns ``name`` and ``ssn`` populated from the active sheet.
 
         Skips summary rows and rows without a Name value.
-
-        Returns:
-            Number of data rows written (excluding header).
         """
         name_col = self._find_header_column(worksheet, SOURCE_NAME_HEADERS)
         if name_col is None:
@@ -295,10 +353,12 @@ class ExcelProcessor:
         extract_ws.cell(row=HEADER_ROW, column=1, value=EXTRACT_TAB_NAME_HEADER)
         extract_ws.cell(row=HEADER_ROW, column=2, value=EXTRACT_TAB_SSN_HEADER)
 
+        if last_data_row is None or summary_rows is None:
+            last_data_row, _content, summary_rows = self._index_worksheet(worksheet)
+
         out_row = HEADER_ROW + 1
-        last_data_row = self._find_last_data_row(worksheet)
         for row in range(HEADER_ROW + 1, last_data_row + 1):
-            if self._is_summary_row(worksheet, row):
+            if row in summary_rows:
                 continue
             name_val = self._get_cell_value(worksheet, row, name_col)
             if name_val is None or str(name_val).strip() == "":
