@@ -60,8 +60,8 @@ def process_excel(body: ExcelProcessRequest) -> ExcelProcessResponse:
 
     try:
         started = time.perf_counter()
+        # Uploaded workbook must succeed even if static in-place path fails.
         result = ExcelProcessor().process(source_path, output_path)
-        inplace = apply_changes_to_static_workbook()
         processing_time_ms = (time.perf_counter() - started) * 1000
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -71,6 +71,8 @@ def process_excel(body: ExcelProcessRequest) -> ExcelProcessResponse:
         logger.exception("Excel processing failed for %s", filename)
         raise HTTPException(status_code=500, detail="Excel processing failed") from exc
 
+    inplace = apply_changes_to_static_workbook()
+
     cleanup_after_successful_process(filename)
 
     message = "Excel processed successfully"
@@ -78,6 +80,11 @@ def process_excel(body: ExcelProcessRequest) -> ExcelProcessResponse:
         message = (
             "Excel processed successfully; static workbook updated in place at "
             f"{inplace.get('inplace_path')}"
+        )
+    elif inplace and inplace.get("inplace_error"):
+        message = (
+            "Excel processed successfully. Static path update skipped: "
+            f"{inplace.get('inplace_error')}"
         )
 
     return ExcelProcessResponse(
