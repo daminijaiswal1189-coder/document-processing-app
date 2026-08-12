@@ -5,13 +5,7 @@
  *   HomePage → uploadDocument | registerDocumentPath → navigate to /result with uploadResult.
  *   ResultPage uses uploadResult.data.filename for /process/* calls.
  */
-import axios from 'axios'
-import { API_BASE_URL } from '../utils/constants'
-
-/** Axios instance targeting the FastAPI backend. */
-const api = axios.create({
-  baseURL: API_BASE_URL,
-})
+import api from './apiClient'
 
 /**
  * Upload one file via multipart POST /upload.

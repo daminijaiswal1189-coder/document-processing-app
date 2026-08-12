@@ -40,7 +40,11 @@ app.add_middleware(
         "http://127.0.0.1:5174",
         "http://127.0.0.1:8000",
         "http://localhost:8000",
+        # Desktop UI static server (pywebview launcher)
+        "http://127.0.0.1:17890",
+        "http://localhost:17890",
     ],
+    allow_origin_regex=r"http://(127\.0\.0\.1|localhost)(:\d+)?",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
