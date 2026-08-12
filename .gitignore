@@ -20,5 +20,8 @@ frontend/dist/
 frontend/.env
 frontend/.env.local
 
+# Doc build cache (matplotlib)
+docs/.matplotlib/
+
 # Old duplicate scaffold (use frontend/ instead)
 document-processing-app/
