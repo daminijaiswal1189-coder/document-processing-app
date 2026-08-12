@@ -1,10 +1,21 @@
 /**
  * Backend API base URL and shared upload constraints.
  *
- * VITE_API_URL overrides the default local FastAPI server (port 8000).
+ * Desktop shell: runtime URL from /app-config.json (see apiConfig.js).
+ * Vite build: VITE_API_URL, else http://127.0.0.1:8000.
  */
-export const API_BASE_URL =
-  import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:8000'
+import { getApiBaseUrl } from './apiConfig'
+
+export { getApiBaseUrl } from './apiConfig'
+
+/** Mutable base URL — refreshed after loadApiConfig() in main.jsx. */
+export let API_BASE_URL = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:8000'
+
+/** Sync API_BASE_URL with runtime config (call after loadApiConfig). */
+export function refreshApiBaseUrl() {
+  API_BASE_URL = getApiBaseUrl()
+  return API_BASE_URL
+}
 
 /** Extensions accepted by the drop zone and validated before upload. */
 export const ALLOWED_EXTENSIONS = ['.xlsx', '.xls', '.docx', '.pdf']

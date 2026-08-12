@@ -1,0 +1,7 @@
+{
+  "apiBaseUrl": "http://127.0.0.1:8000",
+  "fallbackApiBaseUrl": "https://docs.yourcompany.com",
+  "preferLocalhost": true,
+  "uiHost": "127.0.0.1",
+  "uiPort": 17890
+}

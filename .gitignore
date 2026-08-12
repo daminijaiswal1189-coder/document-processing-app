@@ -23,5 +23,11 @@ frontend/.env.local
 # Doc build cache (matplotlib)
 docs/.matplotlib/
 
+# Desktop UI packaging (PyInstaller / Inno Setup)
+desktop/dist/
+desktop/build/
+desktop/installer/
+desktop/*.pyc
+
 # Old duplicate scaffold (use frontend/ instead)
 document-processing-app/

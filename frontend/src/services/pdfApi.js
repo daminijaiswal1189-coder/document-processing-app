@@ -1,12 +1,7 @@
 /**
  * POST /process/pdf — validates required content and returns PASS/FAIL.
  */
-import axios from 'axios'
-import { API_BASE_URL } from '../utils/constants'
-
-const api = axios.create({
-  baseURL: API_BASE_URL,
-})
+import api from './apiClient'
 
 /**
  * @param {string} filename - Stored upload basename (UUID.pdf).
