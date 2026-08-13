@@ -1,0 +1,27 @@
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+
+# Python (backend)
+backend/.venv/
+backend/**/__pycache__/
+backend/**/*.py[cod]
+backend/.pytest_cache/
+backend/.env
+backend/storage/uploads/*
+backend/storage/processed/*
+!backend/storage/uploads/.gitkeep
+!backend/storage/processed/.gitkeep
+
+# Node (frontend)
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+
+# Doc build cache (matplotlib)
+docs/.matplotlib/
+
+# Old duplicate scaffold (use frontend/ instead)
+document-processing-app/
