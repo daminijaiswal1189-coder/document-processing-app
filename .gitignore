@@ -31,3 +31,7 @@ desktop/*.pyc
 
 # Old duplicate scaffold (use frontend/ instead)
 document-processing-app/
+
+# Electron build output
+electron/dist/
+electron/release/
