@@ -1,0 +1,13 @@
+{
+  "name": "document-processor",
+  "version": "1.0.0",
+  "description": "Standalone Document Processing Application",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^38.8.6",
+    "electron-builder": "^26.15.3"
+  }
+}
