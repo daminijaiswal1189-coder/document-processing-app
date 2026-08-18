@@ -1,0 +1,29 @@
+# Use this file on Windows with 32-bit Python only:
+#   pip install -r requirements-32bit.txt
+#
+# PyMuPDF does not reliably support 32-bit Windows. PDF POC uses pypdf (text extraction only).
+# Excel + Word match the main POC stack.
+#
+# Performance note (Excel):
+#   32-bit Python is limited to ~2GB process memory. openpyxl loads the whole workbook,
+#   so large Helpwc files are much slower than on 64-bit Python. Prefer 64-bit Python
+#   for demos with large Excel. On 32-bit the app auto-disables the second data_only
+#   cache pass and static in-place update (override with env POC_LOAD_FALSE_NA_CACHE=1
+#   / POC_ENABLE_STATIC_INPLACE=1 if needed). python -m hypercorn app.main:app --bind 127.0.0.1:8000
+#   pip install -r requirements-32bit.txt ( python -m pip install -r requirements-32bit.txt ) 
+#  pip install pywebview 
+#  pip install pyinstaller 
+#  python -m venv .venv (.\.venv\Scripts\Activate.ps1) 
+#  .venv\Scripts\Activate.ps1 
+#  python -m hypercorn app.main:app --bind 127.0.0.1:8000 
+# python ..\desktop\launch.py
+
+fastapi>=0.115.0
+hypercorn>=0.15.0
+python-multipart>=0.0.12
+openpyxl>=3.1.5
+xlrd>=2.0.1
+python-docx>=1.1.2
+pypdf>=4.0.0
+pywebview>=5.0.0
+pyinstaller>=6.0.0
