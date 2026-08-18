@@ -12,7 +12,8 @@ Backend is NOT included — run uvicorn/IIS separately.
 
 from pathlib import Path
 
-SPECDIR = Path(SPECPATH).resolve().parent
+# SPECPATH is the directory containing this .spec file, not the spec file itself.
+SPECDIR = Path(SPECPATH).resolve()
 REPO = SPECDIR.parent
 FRONTEND_DIST = REPO / "frontend" / "dist"
 CONFIG = SPECDIR / "config.json"
@@ -23,18 +24,37 @@ if FRONTEND_DIST.is_dir():
 if CONFIG.is_file():
     datas.append((str(CONFIG), "."))
 
+# Bundle the backend app package so the EXE can start its own FastAPI server.
+BACKEND_APP = REPO / "backend" / "app"
+if BACKEND_APP.is_dir():
+    datas.append((str(BACKEND_APP), "app"))
+
+BACKEND_UTILS = REPO / "backend" / "logs"
+if BACKEND_UTILS.exists():
+    datas.append((str(BACKEND_UTILS), "logs"))
+
 a = Analysis(
     [str(SPECDIR / "launch.py")],
     pathex=[str(SPECDIR)],
     binaries=[],
     datas=datas,
-    hiddenimports=["webview", "webview.platforms.winforms", "webview.platforms.edgechromium"],
+    hiddenimports=[
+        "webview",
+        "webview.platforms.winforms",
+        "webview.platforms.edgechromium",
+        "uvicorn",
+        "uvicorn.lifespan.on",
+        "uvicorn.lifespan.off",
+        "uvicorn.config",
+        "fastapi",
+        "fastapi.middleware.cors",
+        "app",
+        "app.main",
+    ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[
-        "uvicorn",
-        "fastapi",
         "openpyxl",
         "xlrd",
         "pymupdf",
@@ -57,7 +77,7 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=False,
-    console=False,  # windowed app (no console)
+    console=True,  # keep visible logs for startup diagnosis
     disable_windowed_traceback=False,
 )
 

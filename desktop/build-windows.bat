@@ -18,14 +18,15 @@ if not exist "frontend\dist\index.html" (
   exit /b 1
 )
 
-echo === 2/4 Activate backend venv / install packagers ===
-cd backend
+echo === 2/4 Activate backend venv / install project deps ===
+c d backend
 if not exist .venv\Scripts\activate.bat (
   echo Creating venv...
   python -m venv .venv
 )
 call .venv\Scripts\activate.bat
 python -m pip install --upgrade pip
+pip install -r requirements-32bit.txt
 pip install pywebview pyinstaller
 cd ..
 

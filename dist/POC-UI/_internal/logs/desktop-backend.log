@@ -1,0 +1,112 @@
+C:\Users\703389651\Documents\POC-App\backend\.venv\Scripts\python.exe: No module named uvicorn
+[2026-08-18 18:27:26 +0530] [22540] [INFO] Running on http://127.0.0.1:8000 (CTRL + C to quit)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\703389651\Documents\POC-App\backend\.venv\Lib\site-packages\hypercorn\__main__.py", line 316, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "C:\Users\703389651\Documents\POC-App\backend\.venv\Lib\site-packages\hypercorn\__main__.py", line 312, in main
+Process SpawnProcess-1:
+    return run(config)
+           ^^^^^^^^^^^
+  File "C:\Users\703389651\Documents\POC-App\backend\.venv\Lib\site-packages\hypercorn\run.py", line 96, in run
+    wait(process.sentinel for process in processes)
+  File "C:\Program Files (x86)\Python312-32\Lib\multiprocessing\connection.py", line 1084, in wait
+    ready_handles = _exhaustive_wait(waithandle_to_obj.keys(), timeout)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files (x86)\Python312-32\Lib\multiprocessing\connection.py", line 1016, in _exhaustive_wait
+    res = _winapi.WaitForMultipleObjects(L, False, timeout)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+InterruptedError: [Errno 4] Interrupted function call
+C:\Users\703389651\Documents\POC-App\backend\.venv\Scripts\python.exe: No module named uvicorn
+[2026-08-18 18:33:01 +0530] [18436] [INFO] Running on http://127.0.0.1:8000 (CTRL + C to quit)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\703389651\Documents\POC-App\backend\.venv\Lib\site-packages\hypercorn\__main__.py", line 316, in <module>
+Process SpawnProcess-1:
+    sys.exit(main())
+             ^^^^^^
+  File "C:\Users\703389651\Documents\POC-App\backend\.venv\Lib\site-packages\hypercorn\__main__.py", line 312, in main
+    return run(config)
+           ^^^^^^^^^^^
+  File "C:\Users\703389651\Documents\POC-App\backend\.venv\Lib\site-packages\hypercorn\run.py", line 96, in run
+    wait(process.sentinel for process in processes)
+  File "C:\Program Files (x86)\Python312-32\Lib\multiprocessing\connection.py", line 1084, in wait
+    ready_handles = _exhaustive_wait(waithandle_to_obj.keys(), timeout)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files (x86)\Python312-32\Lib\multiprocessing\connection.py", line 1016, in _exhaustive_wait
+    res = _winapi.WaitForMultipleObjects(L, False, timeout)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+InterruptedError: [Errno 4] Interrupted function call
+C:\Users\703389651\Documents\POC-App\backend\.venv\Scripts\python.exe: No module named uvicorn
+[2026-08-18 18:47:09 +0530] [13956] [INFO] Running on http://127.0.0.1:8000 (CTRL + C to quit)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\703389651\Documents\POC-App\backend\.venv\Lib\site-packages\hypercorn\__main__.py", line 316, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "C:\Users\703389651\Documents\POC-App\backend\.venv\Lib\site-packages\hypercorn\__main__.py", line 312, in main
+Process SpawnProcess-1:
+    return run(config)
+           ^^^^^^^^^^^
+  File "C:\Users\703389651\Documents\POC-App\backend\.venv\Lib\site-packages\hypercorn\run.py", line 96, in run
+    wait(process.sentinel for process in processes)
+  File "C:\Program Files (x86)\Python312-32\Lib\multiprocessing\connection.py", line 1084, in wait
+    ready_handles = _exhaustive_wait(waithandle_to_obj.keys(), timeout)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files (x86)\Python312-32\Lib\multiprocessing\connection.py", line 1016, in _exhaustive_wait
+    res = _winapi.WaitForMultipleObjects(L, False, timeout)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+InterruptedError: [Errno 4] Interrupted function call
+C:\Users\703389651\Documents\POC-App\backend\.venv\Scripts\python.exe: No module named uvicorn
+[2026-08-18 18:49:53 +0530] [27536] [INFO] Running on http://127.0.0.1:8000 (CTRL + C to quit)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\703389651\Documents\POC-App\backend\.venv\Lib\site-packages\hypercorn\__main__.py", line 316, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "C:\Users\703389651\Documents\POC-App\backend\.venv\Lib\site-packages\hypercorn\__main__.py", line 312, in main
+Process SpawnProcess-1:
+    return run(config)
+           ^^^^^^^^^^^
+  File "C:\Users\703389651\Documents\POC-App\backend\.venv\Lib\site-packages\hypercorn\run.py", line 96, in run
+    wait(process.sentinel for process in processes)
+  File "C:\Program Files (x86)\Python312-32\Lib\multiprocessing\connection.py", line 1084, in wait
+    ready_handles = _exhaustive_wait(waithandle_to_obj.keys(), timeout)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files (x86)\Python312-32\Lib\multiprocessing\connection.py", line 1016, in _exhaustive_wait
+    res = _winapi.WaitForMultipleObjects(L, False, timeout)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+InterruptedError: [Errno 4] Interrupted function call
+INFO:     Started server process [19800]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:59748 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58258 - "GET / HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58258 - "GET /favicon.ico HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:65038 - "GET /health HTTP/1.1" 200 OK
+C:\Users\703389651\Documents\POC-App\backend\.venv\Scripts\python.exe: No module named uvicorn
+vicon.ico HTTP/1.1" 404 Not Found
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\703389651\Documents\POC-App\backend\.venv\Lib\site-packages\hypercorn\__main__.py", line 316, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "C:\Users\703389651\Documents\POC-App\backend\.venv\Lib\site-packages\hypercorn\__main__.py", line 312, in main
+    return run(config)
+           ^^^^^^^^^^^
+  File "C:\Users\703389651\Documents\POC-App\backend\.venv\Lib\site-packages\hypercorn\run.py", line 39, in run
+    sockets = config.create_sockets()
+              ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\703389651\Documents\POC-App\backend\.venv\Lib\site-packages\hypercorn\config.py", line 208, in create_sockets
+    insecure_sockets = self._create_sockets(self.bind)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\703389651\Documents\POC-App\backend\.venv\Lib\site-packages\hypercorn\config.py", line 275, in _create_sockets
+    sock.bind(binding)
+PermissionError: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions

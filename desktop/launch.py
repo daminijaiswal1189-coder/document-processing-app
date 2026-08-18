@@ -1,19 +1,20 @@
-"""
+r"""
 Desktop launcher (pywebview) for Windows — works with 32-bit or 64-bit Python.
 
-Starts FastAPI on 127.0.0.1:8000 via uvicorn or Hypercorn, waits for /health, opens a native window.
+Default behavior for source checkout:
+  - build the standalone desktop EXE
+  - exit without opening the app window
+  - user runs the generated EXE manually when ready
 
-Usage (from repo, after frontend build and venv install):
-  cd backend
-  .venv\\Scripts\\activate
-  pip install pywebview
-  python ..\\desktop\\launch.py
+Optional direct app launch:
+  python ..\desktop\launch.py --open
+
+The generated EXE is created at: dist\POC-UI\POC-UI.exe
 """
 
 from __future__ import annotations
 
 import atexit
-import importlib.util
 import logging
 import os
 import subprocess
@@ -26,19 +27,21 @@ from pathlib import Path
 
 # Resolve paths both for source repo and packaged launch.exe.
 if getattr(sys, "_MEIPASS", None):
-    exe_dir = Path(sys.executable).resolve().parent
+    APP_ROOT = Path(sys._MEIPASS).resolve()
+    BACKEND_DIR = APP_ROOT
+    FRONTEND_DIST = APP_ROOT / "frontend" / "dist"
 else:
     exe_dir = Path(__file__).resolve().parent
-
-if exe_dir.name == "desktop":
-    BACKEND_DIR = exe_dir.parent / "backend"
-elif exe_dir.name == "dist":
-    BACKEND_DIR = exe_dir.parent.parent / "backend"
-else:
-    BACKEND_DIR = exe_dir
+    if exe_dir.name == "desktop":
+        BACKEND_DIR = exe_dir.parent / "backend"
+    else:
+        BACKEND_DIR = exe_dir
+    FRONTEND_DIST = BACKEND_DIR.parent / "frontend" / "dist"
 
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
+if getattr(sys, "_MEIPASS", None):
+    sys.path.insert(0, str(Path(sys._MEIPASS).resolve()))
 
 HOST = "127.0.0.1"
 PORT = 8000
@@ -47,9 +50,7 @@ HEALTH_URL = f"http://{HOST}:{PORT}/health"
 
 BACKEND_EXE_NAMES = ["backend.exe", "main.exe"]
 BACKEND_EXE = next((BACKEND_DIR / name for name in BACKEND_EXE_NAMES if (BACKEND_DIR / name).is_file()), BACKEND_DIR / "backend.exe")
-DESKTOP_DIR = Path(__file__).resolve().parent
-DIST_DIR = DESKTOP_DIR / "dist"
-LAUNCH_EXE = DIST_DIR / "launch.exe"
+BUILD_OUTPUT = BACKEND_DIR.parent / "dist" / "POC-UI" / "POC-UI.exe"
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("desktop")
@@ -57,68 +58,31 @@ logger = logging.getLogger("desktop")
 _backend_process: subprocess.Popen | None = None
 
 
-def _build_launch_exe() -> bool:
-    """Create a bundled launch.exe under desktop/dist when it is missing."""
-    if getattr(sys, "_MEIPASS", None):
-        return True
+def _build_desktop_exe() -> Path | None:
+    """Create the standalone Windows EXE and return the output path."""
+    repo_root = BACKEND_DIR.parent
+    spec_path = repo_root / "desktop" / "poc-ui.spec"
+    venv_python = BACKEND_DIR / ".venv" / "Scripts" / "python.exe"
+    python_exe = venv_python if venv_python.is_file() else Path(sys.executable)
 
-    if LAUNCH_EXE.is_file():
-        logger.info("Executable already exists at %s", LAUNCH_EXE)
-        return True
+    cmd = [str(python_exe), "-m", "PyInstaller", "--noconfirm", str(spec_path)]
+    logger.info("Building desktop EXE with: %s", " ".join(cmd))
 
-    DIST_DIR.mkdir(parents=True, exist_ok=True)
-    python_cmd = _find_python_executable()
+    completed = subprocess.run(cmd, cwd=str(repo_root), capture_output=True, text=True)
+    if completed.returncode != 0:
+        logger.error("EXE build failed with exit code %s", completed.returncode)
+        if completed.stdout.strip():
+            logger.error(completed.stdout.strip())
+        if completed.stderr.strip():
+            logger.error(completed.stderr.strip())
+        return None
 
-    if importlib.util.find_spec("PyInstaller") is None:
-        logger.info("PyInstaller is missing; installing it into the active Python environment")
-        install = subprocess.run(
-            [python_cmd, "-m", "pip", "install", "pyinstaller"],
-            capture_output=True,
-            text=True,
-            cwd=str(DESKTOP_DIR),
-        )
-        if install.returncode != 0:
-            logger.error("PyInstaller install failed: %s", install.stderr.strip() or install.stdout.strip())
-            return False
+    if BUILD_OUTPUT.is_file():
+        logger.info("Desktop EXE ready at %s", BUILD_OUTPUT)
+        return BUILD_OUTPUT
 
-    logger.info("Building desktop executable at %s", LAUNCH_EXE)
-    build = subprocess.run(
-        [
-            python_cmd,
-            "-m",
-            "PyInstaller",
-            "--noconfirm",
-            "--clean",
-            "--onefile",
-            "--windowed",
-            "--name",
-            "launch",
-            str(DESKTOP_DIR / "launch.py"),
-        ],
-        capture_output=True,
-        text=True,
-        cwd=str(DESKTOP_DIR),
-    )
-
-    if build.returncode != 0:
-        if build.stdout.strip():
-            logger.error(build.stdout.strip())
-        if build.stderr.strip():
-            logger.error(build.stderr.strip())
-        logger.error("Failed to build launch.exe")
-        return False
-
-    if LAUNCH_EXE.is_file():
-        logger.info("Created %s", LAUNCH_EXE)
-        return True
-
-    alt_path = DIST_DIR / "launch.exe"
-    if alt_path.is_file():
-        logger.info("Created %s", alt_path)
-        return True
-
-    logger.warning("PyInstaller completed but launch.exe was not found in %s", DIST_DIR)
-    return False
+    logger.warning("PyInstaller finished, but EXE not found at %s", BUILD_OUTPUT)
+    return None
 
 
 def _wait_for_health(timeout_sec: float = 60.0) -> bool:
@@ -196,6 +160,17 @@ def _start_backend_process(cmd: list[str]) -> subprocess.Popen | None:
 
 
 def _run_server() -> None:
+    if getattr(sys, "_MEIPASS", None):
+        try:
+            import uvicorn
+            from app.main import app
+        except Exception as exc:
+            logger.exception("Bundled app import failed: %s", exc)
+        else:
+            logger.info("Starting bundled FastAPI app via uvicorn")
+            uvicorn.run(app, host=HOST, port=PORT, log_level="warning")
+            return
+
     if BACKEND_EXE.is_file():
         process = _start_backend_process([str(BACKEND_EXE)])
         if process is None:
@@ -204,49 +179,39 @@ def _run_server() -> None:
         return
 
     python_cmd = _find_python_executable()
-    uvicorn_available = importlib.util.find_spec("uvicorn") is not None
-    hypercorn_available = importlib.util.find_spec("hypercorn") is not None
+    uvicorn_cmd = [python_cmd, "-m", "uvicorn", "app.main:app", "--host", HOST, "--port", str(PORT)]
+    hypercorn_cmd = [python_cmd, "-m", "hypercorn", "app.main:app", "--bind", f"{HOST}:{PORT}"]
 
-    if uvicorn_available:
-        uvicorn_cmd = [python_cmd, "-m", "uvicorn", "app.main:app", "--host", HOST, "--port", str(PORT)]
-        logger.info("Starting backend with uvicorn")
-        process = _start_backend_process(uvicorn_cmd)
-        if process is not None:
-            process.wait()
-            return
+    process = _start_backend_process(uvicorn_cmd)
+    if process is not None:
+        process.wait()
+        return
 
-    if hypercorn_available:
-        hypercorn_cmd = [python_cmd, "-m", "hypercorn", "app.main:app", "--bind", f"{HOST}:{PORT}"]
-        logger.info("Starting backend with hypercorn")
-        process = _start_backend_process(hypercorn_cmd)
-        if process is not None:
-            process.wait()
-            return
+    logger.info("uvicorn launch failed, trying hypercorn")
+    process = _start_backend_process(hypercorn_cmd)
+    if process is not None:
+        process.wait()
+        return
 
-    if not uvicorn_available and not hypercorn_available:
-        logger.error("No ASGI server package is installed. Install requirements.txt or requirements-32bit.txt first.")
-    else:
-        logger.error("Could not start backend server with the available ASGI servers")
+    logger.error("Could not start backend server")
     return
 
 
-def _should_launch_app() -> bool:
-    return "--launch-app" in sys.argv or "--run-app" in sys.argv or getattr(sys, "_MEIPASS", None) is not None
-
-
 def main() -> int:
-    if not _should_launch_app() and not getattr(sys, "_MEIPASS", None):
-        built = _build_launch_exe()
-        if built:
-            logger.info("Desktop build complete. Run %s manually to open the app.", LAUNCH_EXE)
-            return 0
-        return 1
+    packaged = bool(getattr(sys, "_MEIPASS", None))
+    if not packaged and "--open" not in sys.argv[1:]:
+        build_result = _build_desktop_exe()
+        if build_result is None:
+            return 1
+        print(f"Desktop EXE created: {build_result}")
+        print("Run it manually to launch the app without Python.")
+        return 0
 
     os.chdir(BACKEND_DIR)
 
     atexit.register(_shutdown_backend)
 
-    frontend_dist = BACKEND_DIR.parent / "frontend" / "dist"
+    frontend_dist = FRONTEND_DIST
     if not frontend_dist.is_dir():
         logger.error(
             "frontend/dist not found at %s\n"
