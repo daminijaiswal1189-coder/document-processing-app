@@ -35,3 +35,12 @@ document-processing-app/
 # Electron build output
 electron/dist/
 electron/release/
+
+# Electron deps (install with npm install)
+electron/node_modules/
+
+# Backend packaging outputs
+backend/dist/
+backend/build/
+backend/*.spec.bak
+*.exe
