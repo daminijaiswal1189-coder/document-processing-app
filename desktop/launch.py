@@ -50,7 +50,7 @@ HEALTH_URL = f"http://{HOST}:{PORT}/health"
 
 BACKEND_EXE_NAMES = ["backend.exe", "main.exe"]
 BACKEND_EXE = next((BACKEND_DIR / name for name in BACKEND_EXE_NAMES if (BACKEND_DIR / name).is_file()), BACKEND_DIR / "backend.exe")
-BUILD_OUTPUT = BACKEND_DIR.parent / "dist" / "POC-UI" / "POC-UI.exe"
+BUILD_OUTPUT = BACKEND_DIR.parent / "desktop" / "dist" / "POC-UI" / "POC-UI.exe"
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("desktop")
@@ -65,7 +65,17 @@ def _build_desktop_exe() -> Path | None:
     venv_python = BACKEND_DIR / ".venv" / "Scripts" / "python.exe"
     python_exe = venv_python if venv_python.is_file() else Path(sys.executable)
 
-    cmd = [str(python_exe), "-m", "PyInstaller", "--noconfirm", str(spec_path)]
+    cmd = [
+        str(python_exe),
+        "-m",
+        "PyInstaller",
+        "--noconfirm",
+        "--distpath",
+        str(repo_root / "desktop" / "dist"),
+        "--workpath",
+        str(repo_root / "desktop" / "build"),
+        str(spec_path),
+    ]
     logger.info("Building desktop EXE with: %s", " ".join(cmd))
 
     completed = subprocess.run(cmd, cwd=str(repo_root), capture_output=True, text=True)

@@ -1,4 +1,0 @@
-2026-08-18 18:20:00,373 [INFO] app.main: Backend started
-2026-08-18 18:20:00,373 [INFO] app.main: Writing logs to C:\Users\703389651\Documents\POC-App\backend\logs\backend_2026-08-18_18-20-00.log
-2026-08-18 18:20:00,373 [INFO] app.main: Serving frontend from C:\Users\703389651\Documents\POC-App\frontend\dist
-2026-08-18 18:20:00,374 [INFO] hypercorn.error: Running on http://127.0.0.1:8000 (CTRL + C to quit)

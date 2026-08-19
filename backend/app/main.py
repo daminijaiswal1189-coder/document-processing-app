@@ -9,6 +9,8 @@ Flow:
 """
 
 import logging
+import sys
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -57,7 +59,15 @@ app.include_router(word_router)
 app.include_router(download_router)
 
 # React production build (desktop / single-port). Dev can still use Vite on :5173.
-FRONTEND_DIST = BACKEND_ROOT.parent / "frontend" / "dist"
+# In a PyInstaller build the Python package can be loaded from the embedded
+# archive, so ``__file__`` is not a reliable way to locate bundled assets.
+# PyInstaller exposes their extracted directory through ``_MEIPASS``.
+_BUNDLED_ROOT = getattr(sys, "_MEIPASS", None)
+FRONTEND_DIST = (
+    Path(_BUNDLED_ROOT) / "frontend" / "dist"
+    if _BUNDLED_ROOT
+    else BACKEND_ROOT.parent / "frontend" / "dist"
+)
 
 
 @app.get("/health")

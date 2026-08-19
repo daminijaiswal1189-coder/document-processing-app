@@ -1,5 +1,5 @@
 @echo off
-REM Build frontend-only Windows desktop app: POC-UI.exe
+REM Build standalone Windows desktop app: POC-UI.exe
 REM Run this on the Windows machine (32-bit or 64-bit Python matching your target PCs).
 
 setlocal
@@ -19,7 +19,7 @@ if not exist "frontend\dist\index.html" (
 )
 
 echo === 2/4 Activate backend venv / install project deps ===
-c d backend
+cd backend
 if not exist .venv\Scripts\activate.bat (
   echo Creating venv...
   python -m venv .venv
@@ -50,7 +50,7 @@ echo.
 echo DONE.
 echo Run:  desktop\dist\POC-UI\POC-UI.exe
 echo Edit: desktop\dist\POC-UI\config.json  (localhost vs domain)
-echo Backend must be started separately (uvicorn or IIS).
+echo The EXE starts its bundled backend automatically.
 echo.
 echo Optional MSI/Setup: use Inno Setup on the folder desktop\dist\POC-UI
 endlocal

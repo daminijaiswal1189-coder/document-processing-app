@@ -1,16 +1,18 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
-PyInstaller spec: frontend-only desktop UI (WebView2 / pywebview).
+PyInstaller spec: standalone desktop application (WebView2 / pywebview + FastAPI).
 
 Build (from repo root, with venv that has pywebview + pyinstaller):
   cd frontend && npm ci && npm run build
   cd ../desktop && pyinstaller poc-ui.spec
 
 Output: desktop/dist/POC-UI/POC-UI.exe
-Backend is NOT included — run uvicorn/IIS separately.
+The FastAPI backend and document-processing dependencies are included.
 """
 
 from pathlib import Path
+
+from PyInstaller.utils.hooks import collect_submodules
 
 # SPECPATH is the directory containing this .spec file, not the spec file itself.
 SPECDIR = Path(SPECPATH).resolve()
@@ -24,21 +26,18 @@ if FRONTEND_DIST.is_dir():
 if CONFIG.is_file():
     datas.append((str(CONFIG), "."))
 
-# Bundle the backend app package so the EXE can start its own FastAPI server.
-BACKEND_APP = REPO / "backend" / "app"
-if BACKEND_APP.is_dir():
-    datas.append((str(BACKEND_APP), "app"))
-
 BACKEND_UTILS = REPO / "backend" / "logs"
 if BACKEND_UTILS.exists():
     datas.append((str(BACKEND_UTILS), "logs"))
 
 a = Analysis(
     [str(SPECDIR / "launch.py")],
-    pathex=[str(SPECDIR)],
+    # ``app`` is imported by the launcher only at runtime.  It must be on the
+    # analysis path or PyInstaller omits the whole FastAPI application.
+    pathex=[str(SPECDIR), str(REPO / "backend")],
     binaries=[],
     datas=datas,
-    hiddenimports=[
+    hiddenimports=collect_submodules("app") + [
         "webview",
         "webview.platforms.winforms",
         "webview.platforms.edgechromium",
@@ -50,18 +49,16 @@ a = Analysis(
         "fastapi.middleware.cors",
         "app",
         "app.main",
+        # These are imported lazily by the document readers.
+        "docx",
+        "pypdf",
     ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[
-        "openpyxl",
-        "xlrd",
-        "pymupdf",
-        "fitz",
-        "docx",
-        "pypdf",
-    ],
+    # Do not exclude document-processing libraries: app.main imports the Excel
+    # routes at startup, and the PDF/Word readers load their libraries lazily.
+    excludes=[],
     noarchive=False,
 )
 

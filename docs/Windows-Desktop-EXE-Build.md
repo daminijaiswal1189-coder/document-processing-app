@@ -1,6 +1,6 @@
 # Build Windows desktop UI as .exe (and optional Setup installer)
 
-Frontend-only Windows app. Backend stays separate (Python / IIS).
+Standalone Windows app. The EXE contains the FastAPI backend and starts it locally.
 
 ## Output
 
@@ -36,18 +36,10 @@ This will:
 
 ### Run the desktop app
 
-1. Start backend (separate):
-   ```bat
-   cd C:\Apps\POC-APP\backend
-   .venv\Scripts\activate
-   uvicorn app.main:app --host 127.0.0.1 --port 8000
-   ```
-   Or use IIS on your domain.
-
-2. Double-click:
+1. Double-click:
    `C:\Apps\POC-APP\desktop\dist\POC-UI\POC-UI.exe`
 
-3. To switch localhost vs domain, edit:
+2. To switch localhost vs domain, edit:
    `desktop\dist\POC-UI\config.json`
    then restart the EXE (no rebuild).
 
@@ -67,10 +59,10 @@ That gives a normal Windows install experience. A true **`.msi`** needs WiX; Set
 ## What is inside the EXE package
 
 - React UI (`frontend/dist`)
-- Small local static server + WebView2 window
+- Local FastAPI server + WebView2 window
+- FastAPI and the Excel, Word, and PDF processing dependencies
 - `config.json` for API URL
 
-**Not inside:** FastAPI, openpyxl, Excel processing — those stay on the backend host.
 
 ---
 

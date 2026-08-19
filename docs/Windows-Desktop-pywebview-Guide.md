@@ -2,7 +2,7 @@
 
 **Users run `POC-UI.exe`**, not `python launch.py`.
 
-Backend stays separate (uvicorn or IIS).
+The EXE starts its bundled FastAPI backend automatically.
 
 ## Quick path
 
@@ -11,7 +11,7 @@ cd desktop
 build-windows.bat
 ```
 
-Then start backend, then double-click:
+Then double-click:
 
 `desktop\dist\POC-UI\POC-UI.exe`
 
