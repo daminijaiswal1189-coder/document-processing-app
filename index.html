@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PDF Process</title>
+  <style>
+    :root {
+      --bg: #f4f6f8;
+      --card: #fff;
+      --text: #1a1f2e;
+      --muted: #5b6475;
+      --line: #e2e8f0;
+      --accent: #1d4ed8;
+      --accent-hover: #1e40af;
+      --danger: #b91c1c;
+      --ok: #166534;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.45;
+    }
+    main {
+      max-width: 880px;
+      margin: 32px auto;
+      padding: 0 16px 48px;
+    }
+    h1 { font-size: 1.5rem; margin: 0 0 6px; }
+    p.lead { color: var(--muted); margin: 0 0 20px; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 18px 20px;
+      margin-bottom: 16px;
+    }
+    label { display: block; font-weight: 600; margin: 12px 0 6px; font-size: 0.9rem; }
+    input[type="file"], input[type="text"], input[type="number"], select, textarea {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      font: inherit;
+    }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 640px) { .row { grid-template-columns: 1fr; } }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+    button {
+      background: var(--accent);
+      color: #fff;
+      border: 0;
+      border-radius: 6px;
+      padding: 8px 14px;
+      font: inherit;
+      cursor: pointer;
+    }
+    button:hover { background: var(--accent-hover); }
+    button.secondary { background: #334155; }
+    button.danger { background: var(--danger); }
+    button:disabled { opacity: 0.55; cursor: not-allowed; }
+    #status { margin-top: 10px; font-size: 0.9rem; color: var(--muted); }
+    #status.ok { color: var(--ok); }
+    #status.err { color: var(--danger); }
+    pre {
+      background: #0f172a;
+      color: #e2e8f0;
+      padding: 12px;
+      border-radius: 8px;
+      overflow: auto;
+      max-height: 420px;
+      font-size: 12px;
+      white-space: pre-wrap;
+    }
+    .hint { font-size: 0.8rem; color: var(--muted); margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>PDF Process</h1>
+    <p class="lead">Upload a PDF, then extract, remove, or update content using the local API.</p>
+
+    <section class="card">
+      <label for="pdf">PDF file</label>
+      <input id="pdf" type="file" accept=".pdf,application/pdf" />
+
+      <label for="apiBase">API base URL</label>
+      <input id="apiBase" type="text" value="http://127.0.0.1:8001" />
+      <p class="hint">Leave as-is if you opened this page from the FastAPI server.</p>
+
+      <label for="action">Action</label>
+      <select id="action">
+        <option value="read">Read (metadata + page text)</option>
+        <option value="extract">Extract text</option>
+        <option value="remove-text">Remove / redact text</option>
+        <option value="remove-pages">Remove pages</option>
+        <option value="remove-metadata">Remove metadata</option>
+        <option value="update">Update text / metadata</option>
+        <option value="add-text">Add text on a page</option>
+      </select>
+
+      <div id="fields-extract" class="extra" hidden>
+        <label><input id="includeBlocks" type="checkbox" /> Include text blocks with coordinates</label>
+      </div>
+
+      <div id="fields-remove-text" class="extra" hidden>
+        <label for="texts">Phrases to redact (comma-separated)</label>
+        <input id="texts" type="text" placeholder="Confidential, SSN" />
+      </div>
+
+      <div id="fields-remove-pages" class="extra" hidden>
+        <label for="pages">Page numbers to delete (comma-separated, 1-based)</label>
+        <input id="pages" type="text" placeholder="1,3" />
+      </div>
+
+      <div id="fields-update" class="extra" hidden>
+        <div class="row">
+          <div>
+            <label for="find">Find text</label>
+            <input id="find" type="text" />
+          </div>
+          <div>
+            <label for="replace">Replace with</label>
+            <input id="replace" type="text" />
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label for="title">Title</label>
+            <input id="title" type="text" />
+          </div>
+          <div>
+            <label for="author">Author</label>
+            <input id="author" type="text" />
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label for="subject">Subject</label>
+            <input id="subject" type="text" />
+          </div>
+          <div>
+            <label for="keywords">Keywords</label>
+            <input id="keywords" type="text" />
+          </div>
+        </div>
+      </div>
+
+      <div id="fields-add-text" class="extra" hidden>
+        <label for="addText">Text to insert</label>
+        <input id="addText" type="text" />
+        <div class="row">
+          <div>
+            <label for="page">Page</label>
+            <input id="page" type="number" min="1" value="1" />
+          </div>
+          <div>
+            <label for="fontsize">Font size</label>
+            <input id="fontsize" type="number" min="6" value="11" />
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label for="x">X (points)</label>
+            <input id="x" type="number" value="72" />
+          </div>
+          <div>
+            <label for="y">Y (points)</label>
+            <input id="y" type="number" value="72" />
+          </div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="run" type="button">Run</button>
+        <button id="clear" class="secondary" type="button">Clear output</button>
+      </div>
+      <div id="status"></div>
+    </section>
+
+    <section class="card">
+      <label>Result</label>
+      <pre id="output">No result yet.</pre>
+    </section>
+  </main>
+
+  <script>
+    const extras = {
+      extract: "fields-extract",
+      "remove-text": "fields-remove-text",
+      "remove-pages": "fields-remove-pages",
+      update: "fields-update",
+      "add-text": "fields-add-text",
+    };
+
+    const actionEl = document.getElementById("action");
+    const statusEl = document.getElementById("status");
+    const outputEl = document.getElementById("output");
+    const runEl = document.getElementById("run");
+
+    function showFields() {
+      document.querySelectorAll(".extra").forEach((el) => (el.hidden = true));
+      const id = extras[actionEl.value];
+      if (id) document.getElementById(id).hidden = false;
+    }
+
+    actionEl.addEventListener("change", showFields);
+    showFields();
+
+    function setStatus(text, kind) {
+      statusEl.textContent = text;
+      statusEl.className = kind || "";
+    }
+
+    function fileOrThrow() {
+      const file = document.getElementById("pdf").files[0];
+      if (!file) throw new Error("Choose a PDF file first.");
+      if (!file.name.toLowerCase().endsWith(".pdf")) throw new Error("Only .pdf files are allowed.");
+      return file;
+    }
+
+    function apiUrl(path) {
+      const base = document.getElementById("apiBase").value.replace(/\/$/, "");
+      return base + path;
+    }
+
+    async function downloadPdf(blob, fallbackName) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fallbackName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    document.getElementById("clear").addEventListener("click", () => {
+      outputEl.textContent = "No result yet.";
+      setStatus("");
+    });
+
+    runEl.addEventListener("click", async () => {
+      runEl.disabled = true;
+      setStatus("Working…");
+      try {
+        const file = fileOrThrow();
+        const action = actionEl.value;
+        const form = new FormData();
+        form.append("file", file);
+
+        let path = "/pdf/" + action;
+        if (action === "extract") {
+          form.append("include_blocks", document.getElementById("includeBlocks").checked ? "true" : "false");
+        } else if (action === "remove-text") {
+          form.append("texts", document.getElementById("texts").value);
+        } else if (action === "remove-pages") {
+          form.append("pages", document.getElementById("pages").value);
+        } else if (action === "update") {
+          form.append("find", document.getElementById("find").value);
+          form.append("replace", document.getElementById("replace").value);
+          form.append("title", document.getElementById("title").value);
+          form.append("author", document.getElementById("author").value);
+          form.append("subject", document.getElementById("subject").value);
+          form.append("keywords", document.getElementById("keywords").value);
+        } else if (action === "add-text") {
+          form.append("text", document.getElementById("addText").value);
+          form.append("page", document.getElementById("page").value);
+          form.append("x", document.getElementById("x").value);
+          form.append("y", document.getElementById("y").value);
+          form.append("fontsize", document.getElementById("fontsize").value);
+        }
+
+        const res = await fetch(apiUrl(path), { method: "POST", body: form });
+        const contentType = res.headers.get("content-type") || "";
+
+        if (!res.ok) {
+          let detail = res.status + " " + res.statusText;
+          try {
+            const err = await res.json();
+            detail = err.detail || JSON.stringify(err);
+          } catch (_) {
+            try { detail = await res.text(); } catch (__) {}
+          }
+          throw new Error(detail);
+        }
+
+        if (contentType.includes("application/pdf")) {
+          const blob = await res.blob();
+          const name = file.name.replace(/\.pdf$/i, "") + "-updated.pdf";
+          await downloadPdf(blob, name);
+          outputEl.textContent = "Updated PDF downloaded: " + name;
+          setStatus("Done — PDF downloaded.", "ok");
+        } else {
+          const json = await res.json();
+          outputEl.textContent = JSON.stringify(json, null, 2);
+          setStatus("Done.", "ok");
+        }
+      } catch (err) {
+        outputEl.textContent = String(err.message || err);
+        setStatus("Failed.", "err");
+      } finally {
+        runEl.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
