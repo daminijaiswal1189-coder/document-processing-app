@@ -93,12 +93,12 @@
 
       <label for="action">Action</label>
       <select id="action">
+        <option value="update">Update / find and replace text</option>
         <option value="read">Read (metadata + page text)</option>
         <option value="extract">Extract text</option>
-        <option value="remove-text">Remove / redact text</option>
+        <option value="remove-text">Remove / redact text (no replacement)</option>
         <option value="remove-pages">Remove pages</option>
         <option value="remove-metadata">Remove metadata</option>
-        <option value="update">Update text / metadata</option>
         <option value="add-text">Add text on a page</option>
       </select>
 
@@ -116,17 +116,18 @@
         <input id="pages" type="text" placeholder="1,3" />
       </div>
 
-      <div id="fields-update" class="extra" hidden>
+      <div id="fields-update" class="extra">
         <div class="row">
           <div>
             <label for="find">Find text</label>
-            <input id="find" type="text" />
+            <input id="find" type="text" placeholder="Copy from Extract, e.g. freely upload" />
           </div>
           <div>
-            <label for="replace">Replace with</label>
-            <input id="replace" type="text" />
+            <label for="replaceText">Replace with (required)</label>
+            <input id="replaceText" type="text" placeholder="New text that should appear" />
           </div>
         </div>
+        <p class="hint">Both Find and Replace with are required. If Replace with is empty, the original text is only deleted.</p>
         <div class="row">
           <div>
             <label for="title">Title</label>
@@ -260,8 +261,14 @@
         } else if (action === "remove-pages") {
           form.append("pages", document.getElementById("pages").value);
         } else if (action === "update") {
-          form.append("find", document.getElementById("find").value);
-          form.append("replace", document.getElementById("replace").value);
+          const findVal = document.getElementById("find").value.trim();
+          const replaceVal = document.getElementById("replaceText").value;
+          if (!findVal) throw new Error("Find text is required.");
+          if (!replaceVal.trim()) {
+            throw new Error("Replace with is required. Leaving it empty only deletes the original text.");
+          }
+          form.append("find", findVal);
+          form.append("replace", replaceVal);
           form.append("title", document.getElementById("title").value);
           form.append("author", document.getElementById("author").value);
           form.append("subject", document.getElementById("subject").value);
@@ -292,8 +299,15 @@
           const blob = await res.blob();
           const name = file.name.replace(/\.pdf$/i, "") + "-updated.pdf";
           await downloadPdf(blob, name);
-          outputEl.textContent = "Updated PDF downloaded: " + name;
-          setStatus("Done — PDF downloaded.", "ok");
+          const count = res.headers.get("X-Replaced-Count");
+          const extra = count ? ` Replaced ${count} occurrence(s).` : "";
+          outputEl.textContent =
+            "Updated PDF downloaded: " + name + extra +
+            (action === "update"
+              ? "\nFind: " + document.getElementById("find").value +
+                "\nReplace with: " + document.getElementById("replaceText").value
+              : "");
+          setStatus("Done — PDF downloaded." + extra, "ok");
         } else {
           const json = await res.json();
           outputEl.textContent = JSON.stringify(json, null, 2);

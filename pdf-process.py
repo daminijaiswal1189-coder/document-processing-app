@@ -35,6 +35,7 @@ app.add_middleware(
     allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Replaced-Count", "Content-Disposition"],
 )
 
 ALLOWED_SUFFIX = ".pdf"
@@ -64,16 +65,19 @@ def _open_pdf(data: bytes) -> fitz.Document:
         raise HTTPException(status_code=400, detail=f"Invalid PDF: {exc}") from exc
 
 
-def _pdf_response(doc: fitz.Document, filename: str) -> StreamingResponse:
+def _pdf_response(doc: fitz.Document, filename: str, extra_headers: dict[str, str] | None = None) -> StreamingResponse:
     buffer = io.BytesIO()
     doc.save(buffer, garbage=4, deflate=True)
     doc.close()
     buffer.seek(0)
     safe_name = Path(filename).stem + "-updated.pdf"
+    headers = {"Content-Disposition": f'attachment; filename="{safe_name}"'}
+    if extra_headers:
+        headers.update(extra_headers)
     return StreamingResponse(
         buffer,
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{safe_name}"'},
+        headers=headers,
     )
 
 
@@ -90,6 +94,233 @@ def _extract_pages(doc: fitz.Document) -> list[dict[str, Any]]:
             }
         )
     return pages
+
+
+def _apply_redactions(page: fitz.Page) -> None:
+    try:
+        page.apply_redactions(images=2, graphics=1, text=0)
+    except TypeError:
+        page.apply_redactions()
+
+
+def _inflate(rect: fitz.Rect, pad: float = 1.0) -> fitz.Rect:
+    box = fitz.Rect(rect)
+    box.x0 -= pad
+    box.y0 -= pad
+    box.x1 += pad
+    box.y1 += pad
+    return box
+
+
+def _unique_rects(rects: list[fitz.Rect]) -> list[fitz.Rect]:
+    seen: set[tuple[float, float, float, float]] = set()
+    out: list[fitz.Rect] = []
+    for rect in rects:
+        box = fitz.Rect(rect)
+        key = (round(box.x0, 1), round(box.y0, 1), round(box.x1, 1), round(box.y1, 1))
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(box)
+    return out
+
+
+def _word_boundary_ok(text: str, start: int, length: int) -> bool:
+    end = start + length
+    left_ok = start == 0 or not text[start - 1].isalnum()
+    right_ok = end >= len(text) or not text[end].isalnum()
+    return left_ok and right_ok
+
+
+def _rects_from_rawdict(page: fitz.Page, needle: str) -> list[fitz.Rect]:
+    """Match text using per-character boxes (works when words are split)."""
+    needle_l = needle.lower()
+    single_word = " " not in needle_l
+    rects: list[fitz.Rect] = []
+    raw = page.get_text("rawdict")
+    for block in raw.get("blocks", []):
+        if block.get("type") != 0:
+            continue
+        for line in block.get("lines", []):
+            chars: list[dict[str, Any]] = []
+            for span in line.get("spans", []):
+                chars.extend(span.get("chars") or [])
+            if not chars:
+                continue
+            line_text = "".join(item.get("c", "") for item in chars)
+            line_l = line_text.lower()
+            start = 0
+            while True:
+                pos = line_l.find(needle_l, start)
+                if pos < 0:
+                    break
+                if single_word and not _word_boundary_ok(line_l, pos, len(needle_l)):
+                    start = pos + 1
+                    continue
+                chunk = chars[pos : pos + len(needle)]
+                if chunk:
+                    union = fitz.Rect(chunk[0]["bbox"])
+                    for item in chunk[1:]:
+                        union |= fitz.Rect(item["bbox"])
+                    rects.append(union)
+                start = pos + 1
+    return rects
+
+
+def _fontsize_for_rect(page: fitz.Page, rect: fitz.Rect) -> float:
+    target = fitz.Rect(rect)
+    for block in page.get_text("dict").get("blocks", []):
+        if block.get("type") != 0:
+            continue
+        for line in block.get("lines", []):
+            for span in line.get("spans", []):
+                box = fitz.Rect(span.get("bbox") or (0, 0, 0, 0))
+                if box.intersects(target):
+                    size = float(span.get("size") or 0)
+                    if size > 0:
+                        return size
+    return max(8.0, min(rect.height * 0.75, 18.0))
+
+
+def _needle_variants(needle: str) -> list[str]:
+    raw = " ".join((needle or "").split())
+    if not raw:
+        return []
+    variants = {raw}
+    variants.add(raw.replace("'", "\u2019").replace('"', "\u201d"))
+    variants.add(raw.replace("\u2018", "'").replace("\u2019", "'").replace("\u201c", '"').replace("\u201d", '"'))
+    return list(variants)
+
+
+def _search_rects(page: fitz.Page, needle: str) -> list[fitz.Rect]:
+    """Find text boxes, including case-insensitive and split-character PDFs."""
+    variants = _needle_variants(needle)
+    if not variants:
+        return []
+
+    rects: list[fitz.Rect] = []
+    for variant in variants:
+        rects.extend(fitz.Rect(item) for item in page.search_for(variant))
+        rects.extend(_rects_from_rawdict(page, variant))
+
+        lower = variant.lower()
+        words = page.get_text("words")
+        parts = lower.split()
+        if len(parts) == 1:
+            for word in words:
+                token = "".join(ch for ch in word[4].lower() if ch.isalnum())
+                if token == "".join(ch for ch in lower if ch.isalnum()):
+                    rects.append(fitz.Rect(word[:4]))
+        else:
+            for index in range(len(words) - len(parts) + 1):
+                chunk = words[index : index + len(parts)]
+                if not all(item[6] == chunk[0][6] for item in chunk):
+                    continue
+                if [item[4].lower() for item in chunk] != parts:
+                    continue
+                union = fitz.Rect(chunk[0][:4])
+                for item in chunk[1:]:
+                    union |= fitz.Rect(item[:4])
+                rects.append(union)
+
+    unique = _unique_rects(rects)
+    lower = " ".join(variants[0].split()).lower()
+    if " " not in lower:
+        exact: list[fitz.Rect] = []
+        needle_alnum = "".join(ch for ch in lower if ch.isalnum())
+        for box in unique:
+            got = "".join(ch for ch in page.get_textbox(box).lower() if ch.isalnum())
+            if got == needle_alnum:
+                exact.append(box)
+        if exact:
+            return exact
+    return unique
+
+
+def _replacement_box(page: fitz.Page, rect: fitz.Rect, text: str, fontsize: float) -> tuple[fitz.Rect, float]:
+    size = max(7.0, min(fontsize, 28.0))
+    needed = fitz.get_text_length(text or " ", fontname="helv", fontsize=size) + 8
+    width = max(rect.width, needed)
+    height = max(rect.height, size * 1.35)
+    box = fitz.Rect(
+        rect.x0,
+        rect.y0,
+        min(page.rect.x1 - 3, rect.x0 + width),
+        min(page.rect.y1 - 3, rect.y0 + height),
+    )
+    return box, size
+
+
+def _cover_box(page: fitz.Page, box: fitz.Rect) -> None:
+    shape = page.new_shape()
+    shape.draw_rect(box)
+    shape.finish(color=None, fill=(1, 1, 1), width=0)
+    shape.commit(overlay=True)
+
+
+def _insert_replacement(page: fitz.Page, rect: fitz.Rect, text: str, fontsize: float) -> None:
+    if not text:
+        return
+    size = max(7.0, min(fontsize, 28.0))
+    baseline = min(rect.y1 - 1, rect.y0 + size * 0.82)
+    page.insert_text(
+        (rect.x0 + 0.5, baseline),
+        text,
+        fontsize=size,
+        fontname="helv",
+        color=(0, 0, 0),
+        overlay=True,
+    )
+
+
+def _replace_text_on_page(page: fitz.Page, find_text: str, replace_text: str) -> int:
+    """Remove original glyphs, then write replacement in that location."""
+    rects = _search_rects(page, find_text)
+    if not rects:
+        return 0
+
+    jobs: list[tuple[fitz.Rect, fitz.Rect, float]] = []
+    for rect in rects:
+        orig = fitz.Rect(rect)
+        size = _fontsize_for_rect(page, orig)
+        box, size = _replacement_box(page, orig, replace_text, size)
+        jobs.append((orig, box, size))
+
+    for orig, box, _size in jobs:
+        wipe = _inflate(orig | box, 0.5)
+        try:
+            page.add_redact_annot(wipe, fill=(1, 1, 1), cross_out=False)
+        except TypeError:
+            page.add_redact_annot(wipe, fill=(1, 1, 1))
+    _apply_redactions(page)
+    try:
+        page.wrap_contents()
+    except Exception:
+        pass
+    try:
+        page.clean_contents()
+    except Exception:
+        pass
+
+    if replace_text:
+        for _orig, box, size in jobs:
+            _cover_box(page, box)
+            _insert_replacement(page, box, replace_text, size)
+        if replace_text not in (page.get_text() or ""):
+            for _orig, box, size in jobs:
+                annot = page.add_freetext_annot(
+                    box,
+                    replace_text,
+                    fontsize=size,
+                    fontname="helv",
+                    text_color=(0, 0, 0),
+                    fill_color=(1, 1, 1),
+                    border_width=0,
+                    align=0,
+                )
+                annot.update()
+
+    return len(jobs)
 
 
 def _metadata(doc: fitz.Document) -> dict[str, Any]:
@@ -194,10 +425,14 @@ async def remove_text(
     try:
         for page in doc:
             for phrase in phrases:
-                for rect in page.search_for(phrase):
-                    page.add_redact_annot(rect, fill=fill_rgb)
+                for rect in _search_rects(page, phrase):
+                    try:
+                        page.add_redact_annot(_inflate(rect), fill=fill_rgb, cross_out=False)
+                    except TypeError:
+                        page.add_redact_annot(_inflate(rect), fill=fill_rgb)
                     hits += 1
-            page.apply_redactions()
+            if page.annots():
+                _apply_redactions(page)
         if hits == 0:
             doc.close()
             raise HTTPException(status_code=404, detail="No matching text found to remove")
@@ -207,6 +442,7 @@ async def remove_text(
     except Exception:
         doc.close()
         raise
+
 
 
 @app.post("/pdf/remove-pages")
@@ -279,34 +515,31 @@ async def update_pdf(
 ) -> StreamingResponse:
     """
     Update PDF:
-    - replace visible text (find -> replace) via redact + insert
+    - replace visible text (find -> replace) by redacting original glyphs
     - optionally set metadata fields
     """
     data = _read_upload(file)
     find_text = find.strip()
+    replace_text = replace
+    if find_text and not replace_text.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Replace text is required. An empty replace only deletes the original text. Use /pdf/remove-text to redact.",
+        )
     doc = _open_pdf(data)
+    replaced = 0
     try:
         if find_text:
-            replaced = 0
-            for page in doc:
-                matches = page.search_for(find_text)
-                if not matches:
-                    continue
-                for rect in matches:
-                    page.add_redact_annot(rect, fill=(1, 1, 1))
-                    replaced += 1
-                page.apply_redactions()
-                for rect in matches:
-                    fontsize = max(8.0, min(14.0, rect.height * 0.8))
-                    page.insert_textbox(
-                        rect,
-                        replace,
-                        fontsize=fontsize,
-                        color=(0, 0, 0),
-                        align=fitz.TEXT_ALIGN_LEFT,
-                    )
+            for index in range(doc.page_count):
+                replaced += _replace_text_on_page(doc[index], find_text, replace_text)
             if replaced == 0:
                 raise HTTPException(status_code=404, detail=f"Text not found: {find_text}")
+            written = "\n".join(doc[i].get_text() for i in range(doc.page_count))
+            if replace_text not in written:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Original text was removed but replacement could not be written. Try a shorter replace string.",
+                )
 
         meta_update: dict[str, str] = {}
         if title:
@@ -328,7 +561,8 @@ async def update_pdf(
                 detail="Provide find/replace and/or at least one metadata field",
             )
 
-        return _pdf_response(doc, file.filename or "document.pdf")
+        extra = {"X-Replaced-Count": str(replaced)}
+        return _pdf_response(doc, file.filename or "document.pdf", extra_headers=extra)
     except HTTPException:
         doc.close()
         raise
