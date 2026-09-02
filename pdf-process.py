@@ -35,7 +35,7 @@ app.add_middleware(
     allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["X-Replaced-Count", "Content-Disposition"],
+    expose_headers=["X-Replaced-Count", "X-Assembled-Files", "X-Assembled-Pages", "Content-Disposition"],
 )
 
 ALLOWED_SUFFIX = ".pdf"
@@ -65,12 +65,17 @@ def _open_pdf(data: bytes) -> fitz.Document:
         raise HTTPException(status_code=400, detail=f"Invalid PDF: {exc}") from exc
 
 
-def _pdf_response(doc: fitz.Document, filename: str, extra_headers: dict[str, str] | None = None) -> StreamingResponse:
+def _pdf_response(
+    doc: fitz.Document,
+    filename: str,
+    extra_headers: dict[str, str] | None = None,
+    download_name: str | None = None,
+) -> StreamingResponse:
     buffer = io.BytesIO()
     doc.save(buffer, garbage=4, deflate=True)
     doc.close()
     buffer.seek(0)
-    safe_name = Path(filename).stem + "-updated.pdf"
+    safe_name = download_name or (Path(filename).stem + "-updated.pdf")
     headers = {"Content-Disposition": f'attachment; filename="{safe_name}"'}
     if extra_headers:
         headers.update(extra_headers)
@@ -568,6 +573,48 @@ async def update_pdf(
         raise
     except Exception:
         doc.close()
+        raise
+
+
+@app.post("/pdf/assemble")
+async def assemble_pdfs(files: list[UploadFile] = File(...)) -> StreamingResponse:
+    """Combine multiple PDFs into one PDF, in the order uploaded."""
+    if len(files) < 2:
+        raise HTTPException(status_code=400, detail="Upload at least two PDF files to assemble")
+    if len(files) > 30:
+        raise HTTPException(status_code=400, detail="Maximum 30 PDF files per assemble")
+
+    combined = fitz.open()
+    try:
+        for upload in files:
+            data = _read_upload(upload)
+            source = _open_pdf(data)
+            try:
+                if source.page_count < 1:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"{upload.filename or 'file'} has no pages",
+                    )
+                if source.is_encrypted:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"{upload.filename or 'file'} is encrypted and cannot be assembled",
+                    )
+                combined.insert_pdf(source)
+            finally:
+                source.close()
+        extra = {"X-Assembled-Files": str(len(files)), "X-Assembled-Pages": str(combined.page_count)}
+        return _pdf_response(
+            combined,
+            "assembled.pdf",
+            extra_headers=extra,
+            download_name="assembled.pdf",
+        )
+    except HTTPException:
+        combined.close()
+        raise
+    except Exception:
+        combined.close()
         raise
 
 

@@ -75,7 +75,15 @@
       font-size: 12px;
       white-space: pre-wrap;
     }
-    .hint { font-size: 0.8rem; color: var(--muted); margin-top: 4px; }
+    .file-list { list-style: none; margin: 8px 0 0; padding: 0; }
+    .file-list li {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px;
+      margin-bottom: 6px; background: #f8fafc;
+    }
+    .file-list .pos { width: 1.5rem; font-weight: 700; color: var(--muted); }
+    .file-list .name { flex: 1; word-break: break-all; }
+    .file-list button { padding: 4px 10px; background: #334155; }
   </style>
 </head>
 <body>
@@ -84,8 +92,9 @@
     <p class="lead">Upload a PDF, then extract, remove, or update content using the local API.</p>
 
     <section class="card">
-      <label for="pdf">PDF file</label>
+      <label for="pdf">PDF file(s)</label>
       <input id="pdf" type="file" accept=".pdf,application/pdf" />
+      <p class="hint" id="pdfHint">Select one PDF. For Assemble, you can choose several files.</p>
 
       <label for="apiBase">API base URL</label>
       <input id="apiBase" type="text" value="http://127.0.0.1:8001" />
@@ -93,6 +102,7 @@
 
       <label for="action">Action</label>
       <select id="action">
+        <option value="assemble">Assemble PDFs into one file</option>
         <option value="update">Update / find and replace text</option>
         <option value="read">Read (metadata + page text)</option>
         <option value="extract">Extract text</option>
@@ -102,7 +112,10 @@
         <option value="add-text">Add text on a page</option>
       </select>
 
-      <div id="fields-extract" class="extra" hidden>
+      <div id="fields-assemble" class="extra">
+        <p class="hint">Files are joined top to bottom: 1 is first in the assembled PDF. Use Up / Down to change order.</p>
+        <ol id="assembleList" class="file-list"></ol>
+      </div>
         <label><input id="includeBlocks" type="checkbox" /> Include text blocks with coordinates</label>
       </div>
 
@@ -190,6 +203,7 @@
 
   <script>
     const extras = {
+      assemble: "fields-assemble",
       extract: "fields-extract",
       "remove-text": "fields-remove-text",
       "remove-pages": "fields-remove-pages",
@@ -201,11 +215,52 @@
     const statusEl = document.getElementById("status");
     const outputEl = document.getElementById("output");
     const runEl = document.getElementById("run");
+    const pdfInput = document.getElementById("pdf");
+    let assembleFiles = [];
+
+    function renderAssembleList() {
+      const list = document.getElementById("assembleList");
+      list.innerHTML = "";
+      assembleFiles.forEach((file, index) => {
+        const li = document.createElement("li");
+        li.innerHTML =
+          '<span class="pos">' + (index + 1) + "</span>" +
+          '<span class="name">' + file.name + "</span>" +
+          '<button type="button" data-move="up" data-i="' + index + '"' + (index === 0 ? " disabled" : "") + ">Up</button>" +
+          '<button type="button" data-move="down" data-i="' + index + '"' + (index === assembleFiles.length - 1 ? " disabled" : "") + ">Down</button>";
+        list.appendChild(li);
+      });
+    }
+
+    document.getElementById("assembleList").addEventListener("click", (event) => {
+      const btn = event.target.closest("button[data-move]");
+      if (!btn) return;
+      const i = Number(btn.getAttribute("data-i"));
+      const move = btn.getAttribute("data-move");
+      const j = move === "up" ? i - 1 : i + 1;
+      if (j < 0 || j >= assembleFiles.length) return;
+      const copy = assembleFiles.slice();
+      const tmp = copy[i];
+      copy[i] = copy[j];
+      copy[j] = tmp;
+      assembleFiles = copy;
+      renderAssembleList();
+    });
+
+    pdfInput.addEventListener("change", () => {
+      assembleFiles = Array.from(pdfInput.files || []);
+      renderAssembleList();
+    });
 
     function showFields() {
       document.querySelectorAll(".extra").forEach((el) => (el.hidden = true));
       const id = extras[actionEl.value];
       if (id) document.getElementById(id).hidden = false;
+      const multi = actionEl.value === "assemble";
+      pdfInput.multiple = multi;
+      document.getElementById("pdfHint").textContent = multi
+        ? "Select two or more PDFs, then use Up / Down to set the page order."
+        : "Select one PDF. For Assemble, you can choose several files.";
     }
 
     actionEl.addEventListener("change", showFields);
@@ -216,11 +271,14 @@
       statusEl.className = kind || "";
     }
 
-    function fileOrThrow() {
-      const file = document.getElementById("pdf").files[0];
-      if (!file) throw new Error("Choose a PDF file first.");
-      if (!file.name.toLowerCase().endsWith(".pdf")) throw new Error("Only .pdf files are allowed.");
-      return file;
+    function filesOrThrow(multiple) {
+      const list = multiple ? assembleFiles.slice() : Array.from(pdfInput.files || []);
+      if (!list.length) throw new Error(multiple ? "Choose at least two PDF files." : "Choose a PDF file first.");
+      if (multiple && list.length < 2) throw new Error("Assemble needs at least two PDF files.");
+      for (const file of list) {
+        if (!file.name.toLowerCase().endsWith(".pdf")) throw new Error("Only .pdf files are allowed: " + file.name);
+      }
+      return list;
     }
 
     function apiUrl(path) {
@@ -248,12 +306,17 @@
       runEl.disabled = true;
       setStatus("Working…");
       try {
-        const file = fileOrThrow();
         const action = actionEl.value;
         const form = new FormData();
-        form.append("file", file);
-
         let path = "/pdf/" + action;
+
+        if (action === "assemble") {
+          const files = filesOrThrow(true);
+          files.forEach((item) => form.append("files", item));
+        } else {
+          const file = filesOrThrow(false)[0];
+          form.append("file", file);
+        }
         if (action === "extract") {
           form.append("include_blocks", document.getElementById("includeBlocks").checked ? "true" : "false");
         } else if (action === "remove-text") {
@@ -297,12 +360,17 @@
 
         if (contentType.includes("application/pdf")) {
           const blob = await res.blob();
-          const name = file.name.replace(/\.pdf$/i, "") + "-updated.pdf";
+          const name = action === "assemble"
+            ? "assembled.pdf"
+            : (document.getElementById("pdf").files[0].name.replace(/\.pdf$/i, "") + "-updated.pdf");
           await downloadPdf(blob, name);
           const count = res.headers.get("X-Replaced-Count");
-          const extra = count ? ` Replaced ${count} occurrence(s).` : "";
+          const assembled = res.headers.get("X-Assembled-Files");
+          const pages = res.headers.get("X-Assembled-Pages");
+          let extra = count ? ` Replaced ${count} occurrence(s).` : "";
+          if (assembled) extra += ` Assembled ${assembled} file(s), ${pages || "?"} page(s), in listed order.`;
           outputEl.textContent =
-            "Updated PDF downloaded: " + name + extra +
+            "PDF downloaded: " + name + extra +
             (action === "update"
               ? "\nFind: " + document.getElementById("find").value +
                 "\nReplace with: " + document.getElementById("replaceText").value
