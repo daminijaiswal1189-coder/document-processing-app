@@ -1,0 +1,71 @@
+# Rules Engine A–G (SRD §11). Evaluated against Plan Profile only.
+# PDF pages are not changed in Phase 1; this file drives JSON decisions.
+
+rules:
+  - id: A
+    section: Compliance Failure Paragraph
+    keep_when:
+      all:
+        - field: testing_failed
+          equals: true
+        - field: returns_required
+          equals: true
+    else: remove
+
+  - id: B
+    section: PRIOR Wording
+    keep_when:
+      all:
+        - field: testing_method
+          equals: PRIOR
+        - field: returns_required
+          equals: true
+        - any_true: [adp_failed, acp_failed]
+    else: remove
+
+  - id: C
+    section: CURRENT Wording
+    keep_when:
+      all:
+        - field: testing_method
+          equals: CURRENT
+        - field: returns_required
+          equals: true
+        - any_true: [adp_failed, acp_failed]
+    else: remove
+
+  - id: D
+    section: After 12 Months Current Wording
+    keep_when:
+      all:
+        - field: testing_method
+          equals: CURRENT
+        - field: after_12_months
+          equals: true
+    else: remove
+
+  - id: E
+    section: After 12 Months Prior Wording
+    keep_when:
+      all:
+        - field: testing_method
+          equals: PRIOR
+        - field: after_12_months
+          equals: true
+    else: remove
+
+  - id: F
+    section: Top Heavy Wording
+    keep_when:
+      all:
+        - field: top_heavy
+          equals: true
+    else: remove
+
+  - id: G
+    section: No Action Message
+    keep_when:
+      all:
+        - field: has_action_required
+          equals: false
+    else: remove

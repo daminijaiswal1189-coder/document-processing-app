@@ -1,0 +1,54 @@
+# Canonical package sections in expected order (SRD §10).
+# aliases are matched against extracted page text (case-insensitive).
+
+expected_order:
+  - name: Cover Letter
+    aliases: ["Cover Letter", "Cover Page"]
+  - name: Compliance Summary
+    aliases: ["Compliance Summary", "Test Summary"]
+  - name: Action Required
+    aliases: ["Action Required"]
+  - name: Variance
+    aliases: ["Variance"]
+  - name: Year End Recap
+    aliases: ["Year End Recap", "Year-End Recap"]
+  - name: Important Information
+    aliases: ["Important Information"]
+  - name: Compliance Reports
+    aliases: ["Compliance Reports"]
+  - name: Contribution Analysis
+    aliases: ["Contribution Analysis"]
+  - name: Future HCE
+    aliases: ["Future HCE"]
+  - name: ADP/ACP
+    aliases: ["ADP/ACP", "ADP ACP", "ADP and ACP"]
+  - name: 402(g)
+    aliases: ["402(g)", "402g"]
+  - name: 410(b)
+    aliases: ["410(b)", "410b"]
+  - name: 401(a)(4)
+    aliases: ["401(a)(4)", "401(a)(4) Test"]
+  - name: 415
+    aliases: ["415 Limit", "415 Test", "Section 415"]
+  - name: Top Heavy
+    aliases: ["Top Heavy", "Top-Heavy"]
+  - name: Census
+    aliases: ["Census"]
+
+# Bookmark titles for Phase 4 (generated only for sections that remain).
+bookmarks:
+  - Cover Letter
+  - Test Summary
+  - Contribution Analysis
+  - HCE/Key
+  - Future HCE
+  - ADP/ACP Tests
+  - 402(g) Test
+  - 410(b) Test
+  - 401(a)(4) Test
+  - Average Benefit Percentage Test
+  - Benefits Rights and Features
+  - 414(s) Test
+  - 415 Limit Test
+  - Top Heavy
+  - Census
