@@ -16,6 +16,9 @@ COVER_PATTERNS: dict[str, list[str]] = {
     "company_address": [
         r"(?:Company\s*)?Address\s*[:#]?\s*(.+)",
     ],
+    "plan_type": [
+        r"Plan\s*Type\s*[:#]?\s*(.+)",
+    ],
     "plan_year": [
         r"Plan\s*Year\s*[:#]?\s*(\d{1,2}/\d{1,2}/\d{4})\s*[-–to]+\s*(\d{1,2}/\d{1,2}/\d{4})",
         r"Plan\s*Year\s*Ending\s*[:#]?\s*(\d{1,2}/\d{1,2}/\d{4})",
@@ -49,11 +52,21 @@ TEST_PATTERNS: dict[str, list[str]] = {
 }
 
 FAIL_FLAGS: dict[str, list[str]] = {
-    "adp_failed": [r"\bADP\b.{0,80}\bFAIL", r"ADP\s+Test\s*:\s*Fail"],
-    "acp_failed": [r"\bACP\b.{0,80}\bFAIL", r"ACP\s+Test\s*:\s*Fail"],
-    "fail_402g": [r"402\s*\(?g\)?.{0,80}\bFAIL", r"\bFail(?:ed)?\s+402"],
-    "fail_415": [r"\b415\b.{0,80}\bFAIL", r"\bFail(?:ed)?\s+415"],
-    "returns_required": [r"Returns?\s+Required", r"Refunds?\s+Required"],
-    "variance_report": [r"\bVariance\s+Report\b"],
+    "adp_failed": [r"ADP\s+Test\s*:\s*Fail"],
+    "acp_failed": [r"ACP\s+Test\s*:\s*Fail"],
+    "fail_402g": [r"402\s*\(?g\)?\s*Test\s*:\s*Fail"],
+    "fail_415": [r"415\s+Test\s*:\s*Fail"],
+    "returns_required": [r"(?<!No )Returns?\s+Required", r"(?<!No )Refunds?\s+Required"],
+    "variance_report": [r"(?<!No )Variance\s+Report"],
     "after_12_months": [r"After\s+12\s+Months", r"more than 12 months"],
+}
+
+PASS_FLAGS: dict[str, list[str]] = {
+    "adp_failed": [r"ADP\s+Test\s*:\s*Pass"],
+    "acp_failed": [r"ACP\s+Test\s*:\s*Pass"],
+    "fail_402g": [r"402\s*\(?g\)?\s*Test\s*:\s*Pass"],
+    "fail_415": [r"415\s+Test\s*:\s*Pass"],
+    "returns_required": [r"No Returns Required", r"No Refunds Required"],
+    "variance_report": [r"No Variance Report"],
+    "after_12_months": [r"Correction Within 12 Months", r"within 12 months"],
 }

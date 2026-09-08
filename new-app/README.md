@@ -44,6 +44,23 @@ new-app/
   output/                       saved packages
 ```
 
+## Sample PDFs
+
+Upload these from `tests/fixtures/` at http://127.0.0.1:8002
+
+| File | What it tests |
+|------|----------------|
+| `01_pass_no_action.pdf` | All sections; tests pass; Rule G keep |
+| `02_current_fail_qnec.pdf` | CURRENT fail, QNEC, top heavy, after 12 months |
+| `03_prior_fail_offcalendar.pdf` | PRIOR fail; plan year 10/01/2017–09/30/2018 → `333333_2017-Valuation.pdf` |
+| `assemble-current-fail/*.pdf` | Same as #2 split into 16 files — select all, keep 01–16 order |
+
+Regenerate:
+
+```bash
+python tests/fixtures/build_samples.py
+```
+
 ## Tests
 
 ```bash
@@ -53,7 +70,6 @@ python -m pytest -q
 
 ## Next (do not skip)
 
-1. Add 3–5 sample valuation PDFs under `tests/fixtures/`.
-2. Tune `config/field_patterns.py` and `config/sections.yaml` against those samples.
-3. Phase 2: SSN scan and package-order validation.
-4. Phase 4: apply rule decisions to the PDF and generate bookmarks.
+1. Tune `config/field_patterns.py` against real MOA packages when they arrive.
+2. Phase 2: SSN scan and package-order validation.
+3. Phase 4: apply rule decisions to the PDF and generate bookmarks.

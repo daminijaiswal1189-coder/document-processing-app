@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
 from api.jobs import router as jobs_router
@@ -10,6 +11,14 @@ app = FastAPI(
     title="MOA Valuation Package Automation",
     version="0.1.0",
     description="Phase 1: assemble source PDFs, extract a Plan Profile, and save the named valuation package.",
+    servers=[{"url": "/"}],
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.include_router(jobs_router, prefix="/api")

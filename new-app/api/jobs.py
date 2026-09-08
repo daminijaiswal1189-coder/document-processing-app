@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 
 from models.job import JobResult
@@ -13,7 +13,10 @@ JOBS: dict[str, JobResult] = {}
 
 
 @router.post("/jobs", response_model=JobResult)
-async def create_job(files: list[UploadFile] = File(...)) -> JobResult:
+async def create_job(
+    request: Request,
+    files: list[UploadFile] = File(..., alias="files"),
+) -> JobResult:
     if not files:
         raise HTTPException(status_code=400, detail="Upload at least one PDF")
     uploads: list[tuple[str, bytes]] = []
@@ -22,8 +25,16 @@ async def create_job(files: list[UploadFile] = File(...)) -> JobResult:
         if not name.lower().endswith(".pdf"):
             raise HTTPException(status_code=400, detail=f"{name} is not a PDF")
         data = await upload.read()
+        if not data:
+            raise HTTPException(status_code=400, detail=f"{name} is empty")
         uploads.append((name, data))
-    result = process_uploads(uploads)
+    try:
+        result = process_uploads(uploads)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Could not process PDFs: {exc}") from exc
+    result.download_url = str(request.base_url).rstrip("/") + f"/api/jobs/{result.job_id}/pdf"
     JOBS[result.job_id] = result
     return result
 
@@ -44,4 +55,9 @@ def download_job_pdf(job_id: str) -> FileResponse:
     path = Path(job.pdf_path)
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Saved PDF is missing")
-    return FileResponse(path, media_type="application/pdf", filename=job.filename)
+    return FileResponse(
+        path,
+        media_type="application/pdf",
+        filename=job.filename,
+        content_disposition_type="attachment",
+    )

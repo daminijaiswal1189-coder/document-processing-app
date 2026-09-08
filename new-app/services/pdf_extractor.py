@@ -7,7 +7,7 @@ from typing import Any
 import fitz
 import yaml
 
-from config.field_patterns import COVER_PATTERNS, FAIL_FLAGS, TEST_PATTERNS
+from config.field_patterns import COVER_PATTERNS, FAIL_FLAGS, PASS_FLAGS, TEST_PATTERNS
 from config.settings import CONFIG_DIR
 from models.plan_profile import DetectedSection, PlanProfile
 
@@ -26,12 +26,16 @@ def extract_plan_profile(doc: fitz.Document) -> PlanProfile:
     plan_name = _clean_line(_first_match(cover_text, COVER_PATTERNS["plan_name"]))
     company_name = _clean_line(_first_match(cover_text, COVER_PATTERNS["company_name"]))
     company_address = _clean_line(_first_match(cover_text, COVER_PATTERNS["company_address"]))
+    plan_type = _clean_line(_first_match(cover_text, COVER_PATTERNS.get("plan_type") or []))
 
     year_start, year_end = _plan_year(cover_text or full_text)
     method = _testing_method(full_text)
     top_heavy_percent = _money_or_percent(full_text, TEST_PATTERNS["top_heavy_percent"])
 
-    flags = {name: _flag_present(full_text, patterns) for name, patterns in FAIL_FLAGS.items()}
+    flags = {
+        name: _flag_bool(full_text, FAIL_FLAGS[name], PASS_FLAGS.get(name) or [])
+        for name in FAIL_FLAGS
+    }
     testing_failed = _or_bools(flags.get("adp_failed"), flags.get("acp_failed"), flags.get("fail_402g"), flags.get("fail_415"))
 
     adp_qnec = _money_or_percent(full_text, TEST_PATTERNS["adp_qnec"])
@@ -54,6 +58,7 @@ def extract_plan_profile(doc: fitz.Document) -> PlanProfile:
         plan_name=plan_name,
         company_name=company_name,
         company_address=company_address,
+        plan_type=plan_type,
         plan_year_start=year_start,
         plan_year_end=year_end,
         beginning_plan_year=_beginning_year(year_start),
@@ -173,6 +178,14 @@ def _flag_present(text: str, patterns: list[str]) -> bool | None:
     return None
 
 
+def _flag_bool(text: str, true_patterns: list[str], false_patterns: list[str]) -> bool | None:
+    if _flag_present(text, true_patterns):
+        return True
+    if _flag_present(text, false_patterns):
+        return False
+    return None
+
+
 def _or_bools(*values: bool | None) -> bool | None:
     known = [v for v in values if v is not None]
     if not known:
@@ -200,12 +213,15 @@ def _detect_sections(doc: fitz.Document) -> list[DetectedSection]:
     for page_index, page in enumerate(doc):
         text = page.get_text("text") or ""
         for spec in specs:
-            name = spec["name"]
+            name = str(spec["name"])
             if name in seen:
                 continue
             for alias in spec.get("aliases") or [name]:
-                if re.search(rf"\b{re.escape(alias)}\b", text, flags=re.IGNORECASE):
-                    found.append(DetectedSection(name=name, page=page_index + 1, matched_alias=alias))
+                alias_text = str(alias)
+                if re.search(re.escape(alias_text), text, flags=re.IGNORECASE):
+                    found.append(
+                        DetectedSection(name=name, page=page_index + 1, matched_alias=alias_text)
+                    )
                     seen.add(name)
                     break
     return found

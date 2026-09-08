@@ -23,15 +23,23 @@ def merge_pdfs(uploads: list[tuple[str, bytes]]) -> fitz.Document:
                 )
             if not data:
                 raise HTTPException(status_code=400, detail=f"{name} is empty")
-            source = fitz.open(stream=data, filetype="pdf")
             try:
-                if source.page_count < 1:
-                    raise HTTPException(status_code=400, detail=f"{name} has no pages")
+                source = fitz.open(stream=data, filetype="pdf")
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{name} is not a readable PDF ({exc})",
+                ) from exc
+            try:
+                if source.is_encrypted:
+                    source.authenticate("")
                 if source.is_encrypted:
                     raise HTTPException(
                         status_code=400,
                         detail=f"{name} is encrypted and cannot be assembled",
                     )
+                if source.page_count < 1:
+                    raise HTTPException(status_code=400, detail=f"{name} has no pages")
                 combined.insert_pdf(source)
             finally:
                 source.close()

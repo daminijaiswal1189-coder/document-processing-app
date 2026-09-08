@@ -22,13 +22,13 @@ expected_order:
     aliases: ["Future HCE"]
   - name: ADP/ACP
     aliases: ["ADP/ACP", "ADP ACP", "ADP and ACP"]
-  - name: 402(g)
+  - name: "402(g)"
     aliases: ["402(g)", "402g"]
-  - name: 410(b)
+  - name: "410(b)"
     aliases: ["410(b)", "410b"]
-  - name: 401(a)(4)
+  - name: "401(a)(4)"
     aliases: ["401(a)(4)", "401(a)(4) Test"]
-  - name: 415
+  - name: "415"
     aliases: ["415 Limit", "415 Test", "Section 415"]
   - name: Top Heavy
     aliases: ["Top Heavy", "Top-Heavy"]

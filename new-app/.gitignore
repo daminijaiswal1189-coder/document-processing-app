@@ -8,4 +8,5 @@ output/*
 logs/*
 !logs/.gitkeep
 *.pdf
+!tests/fixtures/**/*.pdf
 !tests/fixtures/.gitkeep

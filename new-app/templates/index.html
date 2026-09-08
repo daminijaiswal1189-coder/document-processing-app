@@ -76,7 +76,7 @@
 <body>
   <main>
     <h1>MOA Valuation Package</h1>
-    <p class="lead">Upload source PDFs in order. The app assembles them, extracts a Plan Profile, and saves <code>{PlanNumber}_{Year}-Valuation.pdf</code>.</p>
+    <p class="lead">Use this page at <code>http://127.0.0.1:8002</code> (not the HTML file on disk, and not Swagger <code>/docs</code>). Upload source PDFs in order, then process.</p>
 
     <section class="card">
       <label for="picker">Source PDFs</label>
@@ -149,6 +149,20 @@
       renderFiles();
     }
 
+    function apiBase() {
+      if (location.protocol === "file:") return "http://127.0.0.1:8002";
+      return "";
+    }
+
+    function formatDetail(detail) {
+      if (!detail) return "";
+      if (typeof detail === "string") return detail;
+      if (Array.isArray(detail)) {
+        return detail.map((item) => item.msg || JSON.stringify(item)).join("; ");
+      }
+      return JSON.stringify(detail);
+    }
+
     runBtn.addEventListener("click", async () => {
       errorEl.textContent = "";
       if (!files.length) {
@@ -161,25 +175,67 @@
       statusEl.textContent = "Processing…";
       results.classList.add("hidden");
       try {
-        const response = await fetch("/api/jobs", { method: "POST", body: form });
-        const payload = await response.json();
+        const response = await fetch(apiBase() + "/api/jobs", { method: "POST", body: form });
+        const text = await response.text();
+        let payload = {};
+        try {
+          payload = text ? JSON.parse(text) : {};
+        } catch {
+          throw new Error(text || response.statusText);
+        }
         if (!response.ok) {
-          throw new Error(payload.detail || response.statusText);
+          throw new Error(formatDetail(payload.detail) || response.statusText);
         }
         showResults(payload);
         statusEl.textContent = "Done.";
       } catch (err) {
-        errorEl.textContent = err.message || String(err);
+        const raw = err.message || String(err);
+        errorEl.textContent = raw === "Failed to fetch"
+          ? "Cannot reach the API. Keep python main.py running and open http://127.0.0.1:8002 (not /docs, not the HTML file from Finder)."
+          : raw;
         statusEl.textContent = "";
       } finally {
         runBtn.disabled = false;
       }
     });
 
+    function downloadUrl(job) {
+      const path = job.download_url || ("/api/jobs/" + job.job_id + "/pdf");
+      if (/^https?:\/\//i.test(path)) return path;
+      return apiBase() + path;
+    }
+
     function showResults(job) {
       results.classList.remove("hidden");
       document.getElementById("filename").textContent = "Saved as " + job.filename;
-      document.getElementById("download").href = job.download_url;
+      const link = document.getElementById("download");
+      const url = downloadUrl(job);
+      link.href = url;
+      link.setAttribute("download", job.filename || "valuation.pdf");
+      link.onclick = async (event) => {
+        event.preventDefault();
+        errorEl.textContent = "";
+        try {
+          const response = await fetch(url);
+          if (!response.ok) {
+            throw new Error("Download failed (" + response.status + "). Restart python main.py and process again.");
+          }
+          const blob = await response.blob();
+          const objectUrl = URL.createObjectURL(blob);
+          const saver = document.createElement("a");
+          saver.href = objectUrl;
+          saver.download = job.filename || "valuation.pdf";
+          document.body.appendChild(saver);
+          saver.click();
+          saver.remove();
+          URL.revokeObjectURL(objectUrl);
+        } catch (err) {
+          const raw = err.message || String(err);
+          errorEl.textContent = raw === "Failed to fetch"
+            ? "Cannot download. Keep python main.py running and use http://127.0.0.1:8002"
+            : raw;
+        }
+      };
       fillProfile(job.plan_profile || {});
       fillReview((job.review && job.review.items) || []);
       fillRules(job.rule_decisions || []);
