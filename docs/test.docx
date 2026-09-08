@@ -1,0 +1,812 @@
+Yes. Since you'll be using GitHub Copilot/Cursor, the document should be written as a Software Requirements Document (SRD) that clearly explains the business process, architecture, input/output, modules, APIs, rules, and development phases.
+
+You can give the below document directly to Copilot/Cursor as the project context.
+
+MOA Valuation Package Automation - Software Requirements Document
+
+1. Project Overview
+
+Objective
+
+Automate the Mutual of America (MOA) Valuation Package assembly and review process currently performed manually by reviewers.
+
+The system will:
+
+Upload valuation package source PDFs.
+Assemble PDFs into a single valuation package.
+Extract plan information and testing information.
+Execute business rules currently performed manually.
+Add/remove valuation package sections based on rules.
+Generate bookmarks automatically.
+Perform review validations.
+Save final package using naming convention.
+Generate review summary for users.
+2. Technology Stack
+
+Frontend
+
+HTML
+
+CSS
+
+JavaScript
+
+Purpose:
+
+Upload files
+
+Display extracted information
+
+Display validation results
+
+Download final PDF
+
+Backend
+
+Python 3.14
+
+FastAPI
+
+PDF Processing
+
+Primary library:
+
+PyMuPDF (fitz)
+
+Capabilities:
+
+Read PDF
+
+Extract text
+
+Search text
+
+Replace text
+
+Add text
+
+Delete pages
+
+Merge PDFs
+
+Create bookmarks
+
+Excel Processing
+
+openpyxl
+
+pandas
+
+Used for:
+
+Val Assembly Logs
+
+DocInfo.xls
+
+Reference files
+
+OCR (Future)
+
+Azure Document Intelligence
+
+Fallback:
+
+pytesseract
+
+3. Frontend Workflow
+
+User Selects Files
+
+↓
+
+Upload PDFs
+
+↓
+
+Call API
+
+↓
+
+Process Package
+
+↓
+
+Display Results
+
+↓
+
+Download Final Package
+
+4. High Level Architecture
+
+HTML UI
+
+|
+
+V
+
+FastAPI
+
+|
+
+V
+
+PDF Assembly Module
+
+|
+
+V
+
+Data Extraction Module
+
+|
+
+V
+
+Plan Profile Builder
+
+|
+
+V
+
+Rules Engine
+
+|
+
+V
+
+PDF Modification Engine
+
+|
+
+V
+
+Bookmark Generator
+
+|
+
+V
+
+Validation Engine
+
+|
+
+V
+
+Save Package
+
+5. Folder Structure
+
+project
+
+│
+
+├── main.py
+
+│
+
+├── api
+
+│ ├── upload_api.py
+
+│ ├── extraction_api.py
+
+│ ├── processing_api.py
+
+│ └── review_api.py
+
+│
+
+├── services
+
+│ ├── pdf_assembler.py
+
+│ ├── pdf_extractor.py
+
+│ ├── plan_profile_service.py
+
+│ ├── rules_engine.py
+
+│ ├── pdf_modifier.py
+
+│ ├── bookmark_service.py
+
+│ ├── review_service.py
+
+│ └── save_service.py
+
+│
+
+├── models
+
+│ ├── plan_profile.py
+
+│ ├── validation_result.py
+
+│ └── review_result.py
+
+│
+
+├── templates
+
+│
+
+├── output
+
+│
+
+├── logs
+
+│
+
+└── config
+
+6. Plan Profile Model
+
+After extraction, create one object containing all plan information.
+
+Example:
+
+{
+
+"plan_number":"123456",
+
+"plan_name":"ABC Company 401(k)",
+
+"company_name":"ABC Company",
+
+"company_address":"New York",
+
+"plan_type":"401k",
+
+"plan_year_start":"01/01/2024",
+
+"plan_year_end":"12/31/2024",
+
+"testing_method":"CURRENT",
+
+"top_heavy_percent":62.45,
+
+"top_heavy":true,
+
+"adp_failed":true,
+
+"acp_failed":false,
+
+"returns_required":true,
+
+"fail_402g":false,
+
+"fail_415":true,
+
+"variance_report":true,
+
+"after_12_months":false
+
+}
+
+All business decisions must use this object.
+
+7. File Naming Rule
+
+Final valuation package name:
+
+{PlanNumber}_{BeginningPlanYear}-Valuation.pdf
+
+Examples:
+
+123456_2017-Valuation.pdf
+
+Plan Year:
+
+01/01/2017 - 12/31/2017
+
+→ 2017
+
+ 
+
+02/01/2017 - 01/31/2018
+
+→ 2017
+
+ 
+
+10/01/2017 - 09/30/2018
+
+→ 2017
+
+Use beginning plan year only.
+
+8. PDF Assembly Module
+
+Responsibilities
+
+Merge all uploaded PDFs.
+
+Maintain selected order.
+
+Output:
+
+Single valuation package PDF
+
+9. Data Extraction Module
+
+Extract the following:
+
+Cover Page
+
+Plan Number
+
+Plan Name
+
+Company Name
+
+Company Address
+
+Plan Year Start
+
+Plan Year End
+
+Test Summary
+
+Top Heavy Percent
+
+Pass Status
+
+Fail Status
+
+Test Types
+
+ADP/ACP Tests
+
+Testing Method
+
+ 
+
+CURRENT
+
+or
+
+PRIOR
+
+Extract:
+
+QNEC Amounts
+
+Refund Amounts
+
+Correction Values
+
+Failure Reports
+
+402(g)
+
+415
+
+ADP
+
+ACP
+
+Top Heavy
+
+Variance
+
+``
+
+10. Validation Engine
+
+Cover Page Validation
+
+Verify:
+
+Plan Number
+
+Plan Name
+
+Address
+
+Plan Year End
+
+Matches source data.
+
+SSN Scan
+
+Search entire PDF.
+
+Patterns:
+
+XXX-XX-XXXX
+
+ 
+
+or
+
+ 
+
+XXXXXXXXX
+
+Return:
+
+{
+
+"ssn_found":true,
+
+"page":12
+
+}
+
+Package Order Validation
+
+Expected Order:
+
+Cover Letter
+
+Compliance Summary
+
+Action Required
+
+Variance
+
+Year End Recap
+
+Important Information
+
+Compliance Reports
+
+Contribution Analysis
+
+Future HCE
+
+ADP/ACP
+
+402(g)
+
+410(b)
+
+401(a)(4)
+
+415
+
+Top Heavy
+
+Census
+
+Validate page sequence.
+
+11. Rules Engine
+
+The Rules Engine will decide which sections remain and which sections are removed.
+
+Rule A
+
+Condition:
+
+Testing Failed
+
+AND
+
+Returns Required
+
+Action:
+
+Keep Compliance Failure Paragraph
+
+Else:
+
+Remove
+
+Rule B
+
+Condition:
+
+ADP/ACP
+
+PRIOR Method
+
+Returns Required
+
+Action:
+
+Keep PRIOR Wording
+
+Else remove.
+
+Rule C
+
+Condition:
+
+ADP/ACP
+
+CURRENT Method
+
+Returns Required
+
+Action:
+
+Keep CURRENT Wording
+
+Else remove.
+
+Rule D
+
+Condition:
+
+CURRENT Method
+
+AND
+
+Correction After 12 Months
+
+Action:
+
+Keep After 12 Months Current Wording
+
+Rule E
+
+Condition:
+
+PRIOR Method
+
+AND
+
+Correction After 12 Months
+
+Action:
+
+Keep After 12 Months Prior Wording
+
+Rule F
+
+Condition:
+
+Top Heavy Percent >= 60
+
+Action:
+
+Keep Top Heavy Wording
+
+Else remove.
+
+Rule G
+
+Condition:
+
+No Action Required Items
+
+Action:
+
+Display Green No Action Message
+
+12. ADP/ACP Calculation Engine
+
+Extract:
+
+ADP QNEC
+
+ACP QNEC
+
+Deferral Refund
+
+Match Refund
+
+``
+
+Calculate:
+
+Total QNEC
+
+ 
+
+=
+
+ADP QNEC
+
++
+
+ACP QNEC
+
+Populate notices automatically.
+
+13. PDF Modification Engine
+
+Capabilities:
+
+Remove pages
+
+Remove sections
+
+Replace text
+
+Insert values
+
+Insert notices
+
+Insert calculated values
+
+Examples:
+
+Remove unused sample letters
+
+ 
+
+Remove unnecessary notices
+
+ 
+
+Insert calculated QNEC values
+
+ 
+
+Insert refund amounts
+
+14. Bookmark Generator
+
+Create bookmarks automatically.
+
+Required bookmarks:
+
+Cover Letter
+
+Test Summary
+
+Contribution Analysis
+
+HCE/Key
+
+Future HCE
+
+ADP/ACP Tests
+
+402(g) Test
+
+410(b) Test
+
+401(a)(4) Test
+
+Average Benefit Percentage Test
+
+Benefits Rights and Features
+
+414(s) Test
+
+415 Limit Test
+
+Top Heavy
+
+Census
+
+Use PyMuPDF TOC generation.
+
+15. Review Dashboard
+
+Display:
+
+Cover Page Validation
+
+Package Order Validation
+
+SSN Scan
+
+Top Heavy Validation
+
+Action Required Validation
+
+Bookmarks Validation
+
+``
+
+Example:
+
+PASS ✅ Cover Page
+
+ 
+
+PASS ✅ Plan Name
+
+ 
+
+PASS ✅ Address
+
+ 
+
+PASS ✅ Top Heavy
+
+ 
+
+PASS ✅ Bookmarks
+
+ 
+
+PASS ✅ Package Order
+
+ 
+
+FAIL ❌ SSN Found On Page 22
+
+16. Save Final Package
+
+Destination:
+
+K:\Mutual of America&lt;Plan Number>\Testing&lt;YYYY Testing Folder></span>
+
+File Name:
+
+123456_2024-Valuation.pdf
+
+17. Future Enhancements
+
+Outlook Email
+
+Create draft email.
+
+Subject Format:
+
+MOA | Plan Number | Plan Name | PYE
+
+Example:
+
+MOA | 123456 | ABC Company | 12/31/2024
+
+Val Assembly Log
+
+Update Excel log automatically.
+
+Columns:
+
+Plan Number
+
+Plan Name
+
+Date
+
+Time
+
+User
+
+Status
+
+``
+
+18. MVP Scope
+
+Phase 1:
+
+Upload PDFs
+
+Assemble PDFs
+
+Extract Plan Information
+
+Generate Plan Profile
+
+Save Package
+
+Phase 2:
+
+Validation Engine
+
+SSN Scan
+
+Package Order Validation
+
+Cover Page Validation
+
+Phase 3:
+
+Action Required Rules
+
+ADP/ACP Rules
+
+402(g) Rules
+
+415 Rules
+
+Phase 4:
+
+PDF Modification
+
+Bookmark Creation
+
+Final Package Generation
+
+This document is detailed enough for GitHub Copilot, Cursor, or an AI coding agent to understand the business objective, architecture, modules, workflow, and implementation roadmap before any coding begins.
