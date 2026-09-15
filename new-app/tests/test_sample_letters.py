@@ -8,6 +8,7 @@ from services.package_builder import (
     NOTICE_415,
     SAMPLE_LETTER_402G,
     SAMPLE_LETTER_415,
+    SAMPLE_LETTER_ADP,
     SAMPLE_LETTER_ADP_ACP,
     build_sample_letters_pdf,
 )
@@ -52,7 +53,8 @@ def test_all_fail_with_returns_keeps_j_k_and_l():
         assert profile.returns_required is True
         assert profile.fail_402g_after_deadline is False
         by_id = {item.rule_id: item for item in evaluate(profile)}
-        assert by_id["J"].action == "keep"
+        assert by_id["J_ADP"].action == "keep"
+        assert by_id["J_ACP"].action == "keep"
         assert by_id["K"].action == "keep"
         assert by_id["L"].action == "keep"
     finally:
@@ -72,7 +74,8 @@ def test_j_removed_when_adp_acp_pass(tmp_path, monkeypatch):
     doc = build_sample_letters_pdf(adp="Pass", acp="Pass")
     result = _process(tmp_path, monkeypatch, doc)
     by_id = {item.rule_id: item for item in result.rule_decisions}
-    assert by_id["J"].action == "remove"
+    assert by_id["J_ADP"].action == "remove"
+    assert by_id["J_ACP"].action == "remove"
     text = _pdf_text(result.pdf_path)
     assert "ADP/ACP excess returns" not in text
     assert "402(g) deferral limit has been exceeded" in text
@@ -84,7 +87,8 @@ def test_j_removed_when_no_returns(tmp_path, monkeypatch):
     result = _process(tmp_path, monkeypatch, doc)
     by_id = {item.rule_id: item for item in result.rule_decisions}
     assert result.plan_profile.returns_required is False
-    assert by_id["J"].action == "remove"
+    assert by_id["J_ADP"].action == "remove"
+    assert by_id["J_ACP"].action == "remove"
     assert by_id["K"].action == "remove"
     text = _pdf_text(result.pdf_path)
     assert "ADP/ACP excess returns" not in text
@@ -136,7 +140,8 @@ def test_only_415_keeps_packet_and_letter(tmp_path, monkeypatch):
     )
     result = _process(tmp_path, monkeypatch, doc)
     by_id = {item.rule_id: item for item in result.rule_decisions}
-    assert by_id["J"].action == "remove"
+    assert by_id["J_ADP"].action == "remove"
+    assert by_id["J_ACP"].action == "remove"
     assert by_id["K"].action == "remove"
     assert by_id["L"].action == "keep"
     text = _pdf_text(result.pdf_path)
@@ -144,6 +149,28 @@ def test_only_415_keeps_packet_and_letter(tmp_path, monkeypatch):
     assert "415 annual additions failure" in text
     assert "ADP/ACP excess returns" not in text
     assert "402(g) deferral limit has been exceeded" not in text
+
+
+def test_adp_only_keeps_adp_letter_and_drops_acp_letter(tmp_path, monkeypatch):
+    doc = build_sample_letters_pdf(adp="Fail", acp="Pass")
+    result = _process(tmp_path, monkeypatch, doc)
+    by_id = {item.rule_id: item for item in result.rule_decisions}
+    assert by_id["J_ADP"].action == "keep"
+    assert by_id["J_ACP"].action == "remove"
+    text = _pdf_text(result.pdf_path)
+    assert "Average Deferral Percentage (ADP)" in text
+    assert "Actual Contribution Percentage (ACP)" not in text
+
+
+def test_acp_only_keeps_acp_letter_and_drops_adp_letter(tmp_path, monkeypatch):
+    doc = build_sample_letters_pdf(adp="Pass", acp="Fail")
+    result = _process(tmp_path, monkeypatch, doc)
+    by_id = {item.rule_id: item for item in result.rule_decisions}
+    assert by_id["J_ADP"].action == "remove"
+    assert by_id["J_ACP"].action == "keep"
+    text = _pdf_text(result.pdf_path)
+    assert "Actual Contribution Percentage (ACP)" in text
+    assert "Average Deferral Percentage (ADP)" not in text
 
 
 def test_k_rule_drops_after_deadline_without_pdf():
@@ -159,13 +186,15 @@ def test_k_rule_drops_after_deadline_without_pdf():
     )
     by_id = {item.rule_id: item for item in evaluate(profile)}
     assert by_id["K"].action == "remove"
-    assert by_id["J"].action == "remove"
+    assert by_id["J_ADP"].action == "remove"
+    assert by_id["J_ACP"].action == "remove"
     assert by_id["L"].action == "remove"
 
 
 def test_sample_letter_templates_match_test23():
     assert "SAMPLE/DRAFT Communication to Participant" in SAMPLE_LETTER_ADP_ACP
     assert "Actual Contribution Percentage (ACP)" in SAMPLE_LETTER_ADP_ACP
+    assert "Average Deferral Percentage (ADP)" in SAMPLE_LETTER_ADP
     assert "402(g) Deferral Limit" in SAMPLE_LETTER_402G
     assert "Annual Additions (IRC 415) Test Failure Information" in NOTICE_415
     assert "Annual Additions (IRC 415) limit has been exceeded" in SAMPLE_LETTER_415

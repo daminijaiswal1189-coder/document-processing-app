@@ -9,6 +9,9 @@ def inspect_cover_stamp(page: fitz.Page) -> dict[str, object]:
     The company stamp is a graphic (wording is often not selectable PDF text).
     Pass if cover text + a graphic are present, or if an upper-right image
     itself has the red + navy mark from the stamp.
+
+    This does **not** prove Mutual of America is the only named entity.
+    Other TPA names on the cover remain a manual reviewer check.
     """
     text = (page.get_text("text") or "").lower()
     has_name = "mutual of america" in text

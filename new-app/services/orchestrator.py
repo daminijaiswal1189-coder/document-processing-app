@@ -67,7 +67,11 @@ def process_uploads(
         removed = pdf_modifier.apply_decisions(doc, decisions)
         recap_removed = pdf_modifier.apply_recap_bullets(doc, decisions)
         filled = pdf_modifier.fill_qnec_placeholders(doc, profile)
-        bookmark_count = bookmark_service.add_bookmarks(doc, profile)
+        bookmark_count = bookmark_service.add_bookmarks(
+            doc,
+            profile,
+            source_files=[name for name, _data in ordered],
+        )
         ssn_pages = ssn_scan.scan_ssns(doc)
         review.ssn_found = bool(ssn_pages)
         review.ssn_pages = ssn_pages

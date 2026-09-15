@@ -96,13 +96,24 @@ rules:
           not_true: true
     else: remove
 
-  - id: J
-    section: Sample Letter ADP/ACP
+  - id: J_ADP
+    section: Sample Letter ADP
     keep_when:
       all:
         - field: returns_required
           equals: true
-        - any_true: [adp_failed, acp_failed]
+        - field: adp_failed
+          equals: true
+    else: remove
+
+  - id: J_ACP
+    section: Sample Letter ACP
+    keep_when:
+      all:
+        - field: returns_required
+          equals: true
+        - field: acp_failed
+          equals: true
     else: remove
 
   - id: K

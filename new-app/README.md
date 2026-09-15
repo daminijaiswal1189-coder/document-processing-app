@@ -6,6 +6,8 @@ Phase 1: upload PDFs **or** a Valuation Package folder path → assemble in TEST
 
 Page removal, bookmarks, SSN scan, and Outlook are not applied yet.
 
+Developer onboarding (folder map, pipeline, how to change rules): [`docs/Developer-Guide.md`](docs/Developer-Guide.md).
+
 ## Run
 
 ```bash

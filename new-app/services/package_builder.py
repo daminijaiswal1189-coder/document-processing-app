@@ -319,11 +319,19 @@ def _textbox(doc: fitz.Document, text: str, fontsize: int = 11) -> None:
     page.insert_textbox(fitz.Rect(54, 54, 558, 738), text, fontsize=fontsize, fontname="helv")
 
 
-SAMPLE_LETTER_ADP_ACP = """SAMPLE/DRAFT Communication to Participant
+SAMPLE_LETTER_ACP = """SAMPLE/DRAFT Communication to Participant
 Actual Contribution Percentage (ACP)
 
 This sample letter may be used to notify participants of ADP/ACP excess returns.
 """
+
+SAMPLE_LETTER_ADP = """SAMPLE/DRAFT Communication to Participant
+Average Deferral Percentage (ADP)
+
+This sample letter may be used to notify participants of ADP/ACP excess returns.
+"""
+
+SAMPLE_LETTER_ADP_ACP = SAMPLE_LETTER_ACP
 
 SAMPLE_LETTER_402G = """SAMPLE/DRAFT Communication to Participant
 402(g) Deferral Limit
@@ -353,6 +361,8 @@ def build_sample_letters_pdf(
     returns: str = "Returns Required",
     after_deadline: bool = False,
     include_j: bool = True,
+    include_j_adp: bool | None = None,
+    include_j_acp: bool | None = None,
     include_k: bool = True,
     include_415_notice: bool = True,
     include_415_letter: bool = True,
@@ -377,8 +387,14 @@ def build_sample_letters_pdf(
     if after_deadline:
         cover.append("402(g) failure not processed by 4/15 deadline — noted on the 402(g) test.")
     _textbox(doc, "\n".join(cover))
-    if include_j:
-        _textbox(doc, SAMPLE_LETTER_ADP_ACP)
+    if include_j_adp is None:
+        include_j_adp = include_j
+    if include_j_acp is None:
+        include_j_acp = include_j
+    if include_j_adp:
+        _textbox(doc, SAMPLE_LETTER_ADP)
+    if include_j_acp:
+        _textbox(doc, SAMPLE_LETTER_ACP)
     if include_k:
         _textbox(doc, SAMPLE_LETTER_402G)
     if include_415_notice:

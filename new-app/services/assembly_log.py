@@ -7,11 +7,16 @@ from openpyxl import Workbook, load_workbook
 
 from models.plan_profile import PlanProfile
 
+# Date/Time are when Process ran (assembly), not when the tester was emailed.
 _HEADERS = ["Date", "Time", "Plan Number", "Plan Name", "PYE", "Filename", "Job ID"]
 
 
 def append_row(log_path: Path, profile: PlanProfile, filename: str, job_id: str) -> Path:
-    """TEST23 §P: append the assembled package to the Val Assembly Log."""
+    """TEST23 §P: append the assembled package to the Val Assembly Log.
+
+    Date and Time are the local assembly timestamp. The app does not record
+    a separate 'date sent' because it only writes an .eml draft.
+    """
     log_path.parent.mkdir(parents=True, exist_ok=True)
     if log_path.is_file():
         book = load_workbook(log_path)

@@ -70,7 +70,12 @@ file_types:
   - name: Sample Letter ACP
     how_to_recognize: ["SAMPLE/DRAFT Communication", "Actual Contribution Percentage (ACP)"]
     automation:
-      - remove if no ACP fail or no returns
+      - remove unless ACP failed and returns required (rule J_ACP)
+
+  - name: Sample Letter ADP
+    how_to_recognize: ["SAMPLE/DRAFT Communication", "Average Deferral Percentage (ADP)"]
+    automation:
+      - remove unless ADP failed and returns required (rule J_ADP)
 
   - name: Sample Letter 402(g)
     how_to_recognize: ["402(g) Deferral Limit"]
@@ -112,12 +117,14 @@ file_types:
     how_to_recognize: ["ACP Test", "ADP/ACP", "Correction Method"]
     automation:
       - 403(b) uses ACP Test bookmark (not ADP/ACP Tests)
+      - 401(k) uses ADP Test, ACP Test, or ADP/ACP Tests from filenames / report headings
       - QNEC and refund numbers come from the Correction page
 
   - name: 402(g) Test
     how_to_recognize: ["402(g)"]
     automation:
       - off-calendar plans use calendar-year dates on this report, not PYE
+      - app does not rewrite or validate those dates; source PDF is responsible
 
   - name: 410(b) Test
     how_to_recognize: ["410(b)"]

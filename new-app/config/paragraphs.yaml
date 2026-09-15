@@ -56,10 +56,10 @@ notices:
     heading: Annual Additions (IRC 415) Test Failure Information
 
 sample_letters:
-  - id: J
+  - id: J_ACP
     heading: SAMPLE/DRAFT Communication to Participant
     extra: Actual Contribution Percentage (ACP)
-  - id: J
+  - id: J_ADP
     heading: SAMPLE/DRAFT Communication to Participant
     extra: Average Deferral Percentage (ADP)
   - id: K
