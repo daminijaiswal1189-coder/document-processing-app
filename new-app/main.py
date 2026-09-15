@@ -34,7 +34,11 @@ def ui() -> FileResponse:
     html = TEMPLATES_DIR / "index.html"
     if not html.is_file():
         raise FileNotFoundError(f"UI missing: {html}")
-    return FileResponse(html, media_type="text/html")
+    return FileResponse(
+        html,
+        media_type="text/html",
+        headers={"Cache-Control": "no-store, max-age=0"},
+    )
 
 
 if __name__ == "__main__":

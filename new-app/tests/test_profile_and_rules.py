@@ -35,12 +35,16 @@ def test_rule_f_removes_when_not_top_heavy():
     assert by_id["F"].action == "remove"
 
 
-def test_rule_a_requires_failure_and_returns():
-    profile = PlanProfile(testing_failed=True, returns_required=True)
+def test_rule_a_is_non_adp_failure_with_returns():
+    profile = PlanProfile(fail_402g=True, returns_required=True)
     by_id = {d.rule_id: d for d in evaluate(profile)}
     assert by_id["A"].action == "keep"
 
-    profile = PlanProfile(testing_failed=True, returns_required=False)
+    profile = PlanProfile(adp_failed=True, returns_required=True, fail_402g=False, fail_415=False)
+    by_id = {d.rule_id: d for d in evaluate(profile)}
+    assert by_id["A"].action == "remove"
+
+    profile = PlanProfile(fail_402g=True, returns_required=True, fail_402g_after_deadline=True)
     by_id = {d.rule_id: d for d in evaluate(profile)}
     assert by_id["A"].action == "remove"
 

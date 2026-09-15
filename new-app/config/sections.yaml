@@ -1,33 +1,44 @@
-# Canonical package sections in expected order (SRD §10).
-# aliases are matched against extracted page text (case-insensitive).
+# SOP order from TEST23.docx §6a. Optional sections stay in this sequence when present.
 
 expected_order:
   - name: Cover Letter
     aliases: ["Cover Letter", "Cover Page"]
-  - name: Compliance Summary
-    aliases: ["Compliance Summary", "Test Summary"]
+  - name: Test Summary
+    aliases: ["Test Summary", "Compliance Summary"]
+  - name: Compensation Limit Failure Summary
+    aliases: ["Compensation Limit Failure", "SHMa"]
+  - name: Combined Testing Report
+    aliases: ["Combined Testing Report"]
   - name: Action Required
-    aliases: ["Action Required"]
+    aliases: ["Action Required", "Annual Valuation Report", "IMMEDIATE ACTION REQUIRED"]
+  - name: Failed Test Notice
+    aliases: ["Failed Test Notice", "Failure Notice", "Excess Summary", "Excess Return Notice", "Failed Compliance Testing"]
   - name: Variance
-    aliases: ["Variance"]
+    aliases: ["Variance Report", "Variance"]
   - name: Year End Recap
-    aliases: ["Year End Recap", "Year-End Recap"]
-  - name: Important Information
-    aliases: ["Important Information"]
+    aliases: ["Year End Recap", "Year-End Recap", "Important Information"]
   - name: Compliance Reports
-    aliases: ["Compliance Reports"]
+    aliases: ["Compliance and Administrative", "Compliance Reports", "Overview and Descriptions"]
   - name: Contribution Analysis
     aliases: ["Contribution Analysis"]
+  - name: HCE/Key
+    aliases: ["HCE/Key", "HCE Key"]
   - name: Future HCE
     aliases: ["Future HCE"]
   - name: ADP/ACP
-    aliases: ["ADP/ACP", "ADP ACP", "ADP and ACP"]
+    aliases: ["ADP/ACP", "ADP ACP", "ADP Test", "ACP Test"]
   - name: "402(g)"
     aliases: ["402(g)", "402g"]
   - name: "410(b)"
     aliases: ["410(b)", "410b"]
   - name: "401(a)(4)"
     aliases: ["401(a)(4)", "401(a)(4) Test"]
+  - name: Average Benefit Percentage Test
+    aliases: ["Average Benefit Percentage", "ABPT"]
+  - name: BRF
+    aliases: ["Benefits, Rights and Features", "BRF Test", "BRF"]
+  - name: "414(s)"
+    aliases: ["414(s)", "414s"]
   - name: "415"
     aliases: ["415 Limit", "415 Test", "Section 415"]
   - name: Top Heavy
@@ -35,20 +46,21 @@ expected_order:
   - name: Census
     aliases: ["Census"]
 
-# Bookmark titles for Phase 4 (generated only for sections that remain).
+# Bookmark titles from TEST23.docx §O (only for sections that remain).
 bookmarks:
-  - Cover Letter
-  - Test Summary
-  - Contribution Analysis
-  - HCE/Key
-  - Future HCE
-  - ADP/ACP Tests
-  - 402(g) Test
-  - 410(b) Test
-  - 401(a)(4) Test
-  - Average Benefit Percentage Test
-  - Benefits Rights and Features
-  - 414(s) Test
-  - 415 Limit Test
-  - Top Heavy
-  - Census
+  Cover Letter: Cover Letter
+  Test Summary: Test Summary
+  Compliance Summary: Test Summary
+  Contribution Analysis: Contribution Analysis
+  HCE/Key: HCE/Key
+  Future HCE: Future HCE
+  ADP/ACP: ADP/ACP Tests
+  402(g): 402(g) Test
+  410(b): 410(b) Test
+  401(a)(4): 401(a)(4) Test
+  Average Benefit Percentage Test: Average Benefit Percentage Test
+  BRF: Benefits, Rights and Features Test
+  414(s): 414(s) Test
+  415: 415 Limit Test
+  Top Heavy: Top Heavy
+  Census: Census

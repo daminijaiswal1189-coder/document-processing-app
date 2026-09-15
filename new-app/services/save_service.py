@@ -15,11 +15,29 @@ def valuation_filename(profile: PlanProfile) -> str:
     return f"{number}_{year}-Valuation.pdf"
 
 
-def save_package(doc: fitz.Document, job_id: str, profile: PlanProfile) -> Path:
+def save_package(doc: fitz.Document, job_id: str, profile: PlanProfile, dest_dir: Path | None = None) -> Path:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     job_dir = OUTPUT_DIR / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
     name = valuation_filename(profile)
     path = job_dir / name
     doc.save(path, garbage=3, deflate=True)
+    if dest_dir:
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        copy = dest_dir / name
+        copy.write_bytes(path.read_bytes())
+    return path
+
+
+def testing_folder_from_source(source_folder: str | None) -> Path | None:
+    """Save a copy in the YYYY Testing folder (parent of Valuation Package)."""
+    if not source_folder:
+        return None
+    path = Path(source_folder).expanduser()
+    if not path.exists():
+        return None
+    if path.is_file():
+        path = path.parent
+    if path.name.lower() == "valuation package":
+        return path.parent
     return path

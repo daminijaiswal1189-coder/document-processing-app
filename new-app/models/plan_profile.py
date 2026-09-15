@@ -29,9 +29,20 @@ class PlanProfile(BaseModel):
     acp_failed: bool | None = None
     testing_failed: bool | None = None
     returns_required: bool | None = None
+    returns_already_processed: bool | None = None
+    adp_reclassified: bool | None = None
+    hce_current: bool | None = None
+    hce_future: bool | None = None
     fail_402g: bool | None = None
+    fail_402g_after_deadline: bool | None = None
     fail_415: bool | None = None
     variance_report: bool | None = None
+    contributions_required: bool | None = None
+    partially_vested: bool | None = None
+    safe_harbor: bool | None = None
+    catchup_disallowed: bool | None = None
+    per_payroll_match: bool | None = None
+    keep_excess_summary: bool | None = None
     after_12_months: bool | None = None
     adp_qnec: float | None = None
     acp_qnec: float | None = None
@@ -41,6 +52,9 @@ class PlanProfile(BaseModel):
     has_action_required: bool | None = None
     action_required_items: list[str] = Field(default_factory=list)
     detected_sections: list[DetectedSection] = Field(default_factory=list)
+    mentions_moa: bool | None = None
+    moa_logo_found: bool | None = None
+    moa_stamp_detail: str = ""
     extraction_warnings: list[str] = Field(default_factory=list)
     source_page_count: int = 0
     extra: dict[str, Any] = Field(default_factory=dict)

@@ -10,3 +10,9 @@ logs/*
 *.pdf
 !tests/fixtures/**/*.pdf
 !tests/fixtures/.gitkeep
+!sample-files/pdf/**/*.pdf
+_deps/
+sample-files/_preview/
+sample-files/*.heic
+sample-files/*.HEIC
+sample-files/*.mp4

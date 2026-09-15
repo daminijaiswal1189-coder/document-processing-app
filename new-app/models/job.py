@@ -19,3 +19,8 @@ class JobResult(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     source_files: list[str] = Field(default_factory=list)
     download_url: str = ""
+    preview_url: str = ""
+    email_subject: str = ""
+    email_path: str = ""
+    log_path: str = ""
+    saved_copy_path: str = ""

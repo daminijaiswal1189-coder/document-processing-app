@@ -37,6 +37,7 @@ def _page(doc: fitz.Document, title: str, lines: list[str]) -> None:
 
 def _cover(plan: dict[str, str]) -> list[str]:
     return [
+        "Mutual of America",
         f"Plan Number: {plan['number']}",
         f"Plan Name: {plan['name']}",
         f"Company Name: {plan['company']}",

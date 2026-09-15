@@ -2,7 +2,7 @@
 
 Greenfield app in `new-app/`. It does **not** use the existing POC backend or `pdf-process.py`.
 
-Phase 1 (this folder today): upload PDFs → assemble in order → extract a Plan Profile → preview rules as JSON → save `{PlanNumber}_{BeginningPlanYear}-Valuation.pdf`.
+Phase 1: upload PDFs **or** a Valuation Package folder path → assemble in TEST23 SOP order → extract a Plan Profile → preview keep/remove rules → add bookmarks → save `{PlanNumber}_{BeginningPlanYear}-Valuation.pdf`.
 
 Page removal, bookmarks, SSN scan, and Outlook are not applied yet.
 
