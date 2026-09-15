@@ -85,7 +85,7 @@ There is **no database**. Jobs are in memory. The assembled PDF is on disk under
 | Val Assembly Log | Appends Date, Time, plan, PYE, filename, job id. Date/Time = assembly, not date sent | `assembly_log.py` |
 | Compensation Limit file | Included in combine order | `sections.yaml` |
 | No Comp Limit AR wording | App does **not** add or keep a special Action Required paragraph for compensation limit | intentional |
-| Automated tests | pytest modules under `tests/` | see §15 |
+| Automated tests | pytest modules under `tests/` | see §13 |
 
 ### 2.2 Partial (SOP is richer than the code)
 
