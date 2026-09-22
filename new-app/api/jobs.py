@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse
 
 from config.settings import OUTPUT_DIR
 from models.job import JobResult
-from services.file_order import should_split_pages
+from services.file_order import list_file_meta
 from services.folder_loader import apply_file_order, list_folder_files, load_pdfs_from_folder
 from services.pdf_pages import expand_uploads_by_page, pdf_page_count
 from services.orchestrator import process_uploads
@@ -108,7 +108,7 @@ def list_source_folder(path: str = "") -> dict:
 
 
 @router.post("/inspect")
-async def inspect_uploads(files: list[UploadFile] | None = File(default=None)) -> dict:
+    async def inspect_uploads(files: list[UploadFile] | None = File(default=None)) -> dict:
     """Return page counts so the UI can list each PDF page for reordering."""
     listed: list[dict] = []
     for upload in files or []:
@@ -122,12 +122,7 @@ async def inspect_uploads(files: list[UploadFile] | None = File(default=None)) -
                 pages = pdf_page_count(data)
             except Exception:
                 pages = 1
-        listed.append({
-            "name": name,
-            "size": len(data or b""),
-            "pages": pages,
-            "split": should_split_pages(name, pages),
-        })
+        listed.append(list_file_meta(name, len(data or b""), pages))
     return {"files": listed}
 
 

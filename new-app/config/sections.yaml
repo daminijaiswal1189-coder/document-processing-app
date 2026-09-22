@@ -1,24 +1,65 @@
-# SOP order from TEST23.docx §6a. Optional sections stay in this sequence when present.
+# Combine order for Auto-order (missing files are skipped).
+# Front packet matches the page outline: Cover → Action Required → excess notices
+# → 415 info → sample letters → Year End Recap → Compliance Reports.
 
 expected_order:
   - name: Cover Letter
     aliases: ["Cover Letter", "Cover Page"]
+    label: Cover Letter
+    split_pages: true
+    split_first_label: Cover Letter
+    split_label: Action required page {page}
+  - name: Action Required
+    aliases: ["Action Required", "IMMEDIATE ACTION REQUIRED"]
+    label: Action required
+  - name: ADP/ACP Excess After 12 Months Current
+    label: ADP/ACP Failure excess page after 12 months (Current year Testing Method)
+    aliases:
+      - "ADP/ACP Failure excess page after 12 months (Current year Testing Method)"
+      - "After 12-months (Current"
+      - "After 12 months (Current"
+      - "after 12 months Current"
+  - name: ADP/ACP Excess After 12 Months Prior
+    label: ADP/ACP Failure excess page after 12 months (Prior year Testing Method)
+    aliases:
+      - "ADP/ACP Failure excess page after 12 months (Prior year Testing Method)"
+      - "After 12-months (Prior"
+      - "After 12 months (Prior"
+      - "after 12 months Prior"
+  - name: ADP/ACP Excess Current Year
+    label: ADP/ACP Failure excess page Current year
+    aliases:
+      - "ADP/ACP Failure excess page Current year"
+      - "Failed Compliance Testing (Current"
+      - "excess page Current year"
+  - name: 415 Failure Information
+    label: 415 Failure information
+    aliases: ["415 Failure information", "415 Failure Information", "IRC 415) Test Failure"]
+  - name: ADP/ACP Failure Letter
+    label: ADP/ACP Failure letter
+    aliases: ["ADP/ACP Failure letter", "ADP Failure letter", "ACP Failure letter", "Sample Letter ADP", "Sample Letter ACP"]
+  - name: 402(g) Failure Letter
+    label: 402g Failure letter
+    aliases: ["402g Failure letter", "402(g) Failure letter", "Sample Letter 402"]
+  - name: 415 Failure Letter
+    label: 415 Failure letter
+    aliases: ["415 Failure letter", "Sample Letter 415"]
+  - name: Year End Recap
+    label: Year End Recap
+    aliases: ["Year End Recap", "Year-End Recap", "Important Information"]
+  - name: Compliance Reports
+    label: Compliance Reports
+    aliases: ["Compliance and Administrative", "Compliance Reports", "Overview and Descriptions"]
   - name: Test Summary
     aliases: ["Test Summary", "Compliance Summary"]
   - name: Compensation Limit Failure Summary
     aliases: ["Compensation Limit Failure", "SHMa"]
   - name: Combined Testing Report
     aliases: ["Combined Testing Report"]
-  - name: Action Required
-    aliases: ["Action Required", "Annual Valuation Report", "IMMEDIATE ACTION REQUIRED"]
   - name: Failed Test Notice
     aliases: ["Failed Test Notice", "Failure Notice", "Excess Summary", "Excess Return Notice", "Failed Compliance Testing"]
   - name: Variance
     aliases: ["Variance Report", "Variance"]
-  - name: Year End Recap
-    aliases: ["Year End Recap", "Year-End Recap", "Important Information"]
-  - name: Compliance Reports
-    aliases: ["Compliance and Administrative", "Compliance Reports", "Overview and Descriptions"]
   - name: Contribution Analysis
     aliases: ["Contribution Analysis"]
   - name: HCE/Key

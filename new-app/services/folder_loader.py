@@ -5,7 +5,7 @@ from pathlib import Path
 from fastapi import HTTPException
 
 from config.settings import MAX_FILE_BYTES, MAX_FILES
-from services.file_order import should_split_pages
+from services.file_order import list_file_meta
 from services.pdf_pages import pdf_page_count_path
 
 
@@ -41,10 +41,11 @@ def list_folder_files(raw_path: str) -> dict:
     warnings: list[str] = [f"Skipped non-PDF (convert to PDF before combine): {name}" for name in skipped]
     for item in source_paths:
         pages = pdf_page_count_path(item)
-        split = should_split_pages(item.name, pages)
-        files.append({"name": item.name, "size": item.stat().st_size, "pages": pages, "split": split})
-        if split:
+        meta = list_file_meta(item.name, item.stat().st_size, pages)
+        files.append(meta)
+        if meta["split"]:
             warnings.append(f"{item.name} has {pages} pages; each page is listed so you can reorder.")
+    files.sort(key=lambda item: (item["rank"], item["name"].lower()))
     pdfs = [item for item in files if item["name"].lower().endswith(".pdf")]
     if not pdfs:
         raise HTTPException(status_code=400, detail=f"No PDF files in folder: {path}")

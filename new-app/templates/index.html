@@ -67,6 +67,7 @@
       border-radius: 8px;
     }
     .controls {
+      position: relative;
       flex: 0 0 auto;
       width: 100%;
       padding: 12px;
@@ -112,7 +113,35 @@
     .drop.drag { background: #eff6ff; border-color: var(--accent); }
     .drop-title { display: block; font-weight: 700; font-size: 0.88rem; line-height: 1.3; }
     .drop-hint { display: block; color: var(--muted); font-size: 0.75rem; line-height: 1.4; }
-    #picker { display: none; }
+    .drop-pick {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 6px;
+      cursor: pointer;
+    }
+    .browse-files {
+      display: inline-block;
+      background: #fff;
+      color: var(--accent);
+      border: 1px solid #93c5fd;
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-size: 0.82rem;
+      font-weight: 600;
+    }
+    .drop-pick input[type="file"] {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      opacity: 0;
+      cursor: pointer;
+      font-size: 16px;
+    }
     #file-list {
       display: flex;
       flex-direction: column;
@@ -478,10 +507,13 @@
       </div>
       <div class="top-row">
         <div class="drop" id="drop">
-          <div class="drop-title">Upload files</div>
-          <div class="drop-hint">Drop PDFs, Val Assembly Excel, and Compliance Summary here, or click to choose. A multi-page PDF (for example a 12-page cover) is listed as one row per page so you can reorder. Paste a folder path below, then Show files.</div>
+          <label class="drop-pick">
+            <span class="drop-title">Upload files</span>
+            <span class="drop-hint">Drop PDFs and Excel, or click Browse files. Only a multi-page Cover Letter is split: page 1 is Cover Letter, later pages are Action required page 1, 2, 3. Other files stay one row. Auto-order sorts them. Paste a folder path below, then Show files.</span>
+            <span class="browse-files">Browse files</span>
+            <input id="picker" type="file" accept=".pdf,.xlsx,.xls" multiple />
+          </label>
           <div id="file-list"></div>
-          <input id="picker" type="file" accept=".pdf,.xlsx,.xls,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" multiple />
         </div>
         <div class="run-wrap">
           <label class="check"><input id="auto-order" type="checkbox" checked /> Auto-order</label>
@@ -566,10 +598,10 @@
       app.classList.toggle("upload-hidden", !open);
     }
 
-    picker.addEventListener("change", () => addFiles(picker.files));
-    drop.addEventListener("click", (event) => {
-      if (event.target.closest("button")) return;
-      picker.click();
+    picker.addEventListener("change", () => {
+      const chosen = Array.from(picker.files || []);
+      picker.value = "";
+      addFiles(chosen);
     });
     ["dragenter", "dragover"].forEach((eventName) => {
       drop.addEventListener(eventName, (event) => {
@@ -604,25 +636,47 @@
       });
     });
 
-    function isCoverLetter(name) {
-      const n = String(name || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
-      return n.includes("coverletter") || n.includes("coverpage");
-    }
-
     function expandListed(meta, extra) {
       const pages = Number(meta && meta.pages) || 1;
       const name = meta.name;
       const size = meta.size || 0;
+      const rank = Number(meta && meta.rank);
+      const labels = Array.isArray(meta && meta.labels) ? meta.labels : [];
       const pdf = String(name || "").toLowerCase().endsWith(".pdf");
-      const split = meta.split === true || (meta.split == null && pdf && pages > 1 && isCoverLetter(name));
-      if (split) {
+      const split = meta.split === true;
+      if (split && pages > 1) {
         const rows = [];
         for (let page = 1; page <= pages; page += 1) {
-          rows.push(Object.assign({ name: name, size: size, page: page, pageCount: pages }, extra));
+          rows.push(Object.assign({
+            name: name,
+            size: size,
+            page: page,
+            pageCount: pages,
+            rank: Number.isFinite(rank) ? rank : 1000,
+            label: labels[page - 1] || (name + " (page " + page + " of " + pages + ")"),
+          }, extra));
         }
         return rows;
       }
-      return [Object.assign({ name: name, size: size }, extra)];
+      return [Object.assign({
+        name: name,
+        size: size,
+        rank: Number.isFinite(rank) ? rank : 1000,
+        label: (labels[0] || (meta && meta.label) || name),
+      }, extra)];
+    }
+
+    function sortFilesIfAutoOrder() {
+      if (!document.getElementById("auto-order").checked) return;
+      files = files.slice().sort((a, b) => {
+        const rankA = Number.isFinite(a.rank) ? a.rank : 1000;
+        const rankB = Number.isFinite(b.rank) ? b.rank : 1000;
+        const rank = rankA - rankB;
+        if (rank) return rank;
+        const page = (a.page || 0) - (b.page || 0);
+        if (page) return page;
+        return String(a.name || "").localeCompare(String(b.name || ""));
+      });
     }
 
     function addFiles(list) {
@@ -633,6 +687,12 @@
 
     async function inspectAndAdd(incoming) {
       errorEl.textContent = "";
+      statusEl.textContent = "Adding " + incoming.length + " file(s)…";
+      incoming.forEach((file) => {
+        if (files.some((item) => item.name === file.name && item.file)) return;
+        files.push({ name: file.name, size: file.size, file: file, label: file.name, rank: 1000 });
+      });
+      renderFiles();
       const form = new FormData();
       incoming.forEach((file) => form.append("files", file, file.name));
       try {
@@ -648,36 +708,34 @@
           throw new Error(formatDetail(payload.detail) || response.statusText);
         }
         const metas = payload.files || [];
-        metas.forEach((meta, index) => {
-          const file = incoming[index];
-          if (!file) return;
-          if (files.some((item) => item.name === file.name && item.file)) return;
+        const names = new Set(incoming.map((file) => file.name));
+        files = files.filter((item) => !(item.file && names.has(item.name)));
+        incoming.forEach((file) => {
+          const meta = metas.find((item) => item.name === file.name) || {
+            name: file.name,
+            size: file.size,
+            pages: 1,
+            split: false,
+          };
           expandListed(meta, { file: file }).forEach((row) => files.push(row));
         });
+        sortFilesIfAutoOrder();
         renderFiles();
-        const extraPages = (metas || []).filter((item) => (item.pages || 1) > 1);
-        if (extraPages.length) {
-          statusEl.textContent = extraPages.map((item) => item.name + " has " + item.pages + " pages listed separately.").join(" ");
-        }
+        const extraPages = (metas || []).filter((item) => item.split);
+        statusEl.textContent = extraPages.length
+          ? extraPages.map((item) => (item.label || item.name) + " listed as " + item.pages + " page(s).").join(" ")
+          : "Listed " + files.length + " file(s).";
       } catch (err) {
-        incoming.forEach((file) => {
-          if (!files.some((item) => item.name === file.name && item.size === file.size)) {
-            files.push({ name: file.name, size: file.size, file: file });
-          }
-        });
-        renderFiles();
         const raw = err.message || String(err);
         errorEl.textContent = raw === "Failed to fetch"
           ? "Cannot reach the API. Keep python main.py running and open http://127.0.0.1:8002."
           : raw;
+        statusEl.textContent = "Listed " + files.length + " file(s).";
       }
     }
 
     function fileLabel(file) {
-      if (file.page && file.pageCount > 1) {
-        return file.name + " (page " + file.page + " of " + file.pageCount + ")";
-      }
-      return file.name;
+      return file.label || file.name;
     }
 
     function isPathFile(item) {
@@ -711,6 +769,7 @@
           expandListed(item, { fromPath: true }).forEach((row) => listed.push(row));
         });
         files = uploads.concat(listed);
+        sortFilesIfAutoOrder();
         renderFiles();
         const skipped = (payload.warnings || []).join(" ");
         statusEl.textContent = "Listed " + listed.length + " file(s). Use Up/Down/Remove, then Process package."
@@ -725,6 +784,10 @@
       }
     }
 
+    document.getElementById("auto-order").addEventListener("change", () => {
+      sortFilesIfAutoOrder();
+      renderFiles();
+    });
     document.getElementById("load-path").addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
