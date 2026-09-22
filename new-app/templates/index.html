@@ -68,6 +68,7 @@
     }
     .controls {
       flex: 0 0 auto;
+      width: 100%;
       padding: 12px;
       display: flex;
       flex-direction: column;
@@ -116,14 +117,17 @@
       display: flex;
       flex-direction: column;
       gap: 4px;
-      max-height: 92px;
-      overflow: auto;
       margin-top: 4px;
+    }
+    .app.has-files #file-list {
+      max-height: calc(100vh - 210px);
+      overflow: auto;
     }
     .file-row {
       display: flex;
       align-items: center;
       gap: 6px;
+      flex: 0 0 auto;
       background: #fff;
       border: 1px solid var(--line);
       border-radius: 6px;
@@ -475,7 +479,7 @@
       <div class="top-row">
         <div class="drop" id="drop">
           <div class="drop-title">Upload files</div>
-          <div class="drop-hint">Drop PDFs, Val Assembly Excel, and Compliance Summary here, or click to choose</div>
+          <div class="drop-hint">Drop PDFs, Val Assembly Excel, and Compliance Summary here, or click to choose. A multi-page PDF (for example a 12-page cover) is listed as one row per page so you can reorder. Paste a folder path below, then Show files.</div>
           <div id="file-list"></div>
           <input id="picker" type="file" accept=".pdf,.xlsx,.xls,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" multiple />
         </div>
@@ -487,6 +491,7 @@
       <div class="path-row">
         <label for="source-path">or path</label>
         <input id="source-path" type="text" placeholder="K:\Mutual of America\800643\Testing\Valuation Package" />
+        <button type="button" class="btn ghost" id="load-path">Show files</button>
       </div>
     </section>
 
@@ -552,6 +557,7 @@
     const app = document.querySelector(".app");
     let files = [];
     let currentPreview = "";
+    let listedPath = "";
 
     document.getElementById("hide-upload").addEventListener("click", () => setUploadOpen(false));
     document.getElementById("show-upload").addEventListener("click", () => setUploadOpen(true));
@@ -598,22 +604,150 @@
       });
     });
 
-    function addFiles(list) {
-      const incoming = Array.from(list || []);
-      incoming.forEach((file) => {
-        if (!files.some((item) => item.name === file.name && item.size === file.size)) {
-          files.push(file);
-        }
-      });
-      renderFiles();
+    function isCoverLetter(name) {
+      const n = String(name || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+      return n.includes("coverletter") || n.includes("coverpage");
     }
 
+    function expandListed(meta, extra) {
+      const pages = Number(meta && meta.pages) || 1;
+      const name = meta.name;
+      const size = meta.size || 0;
+      const pdf = String(name || "").toLowerCase().endsWith(".pdf");
+      const split = meta.split === true || (meta.split == null && pdf && pages > 1 && isCoverLetter(name));
+      if (split) {
+        const rows = [];
+        for (let page = 1; page <= pages; page += 1) {
+          rows.push(Object.assign({ name: name, size: size, page: page, pageCount: pages }, extra));
+        }
+        return rows;
+      }
+      return [Object.assign({ name: name, size: size }, extra)];
+    }
+
+    function addFiles(list) {
+      const incoming = Array.from(list || []);
+      if (!incoming.length) return;
+      inspectAndAdd(incoming);
+    }
+
+    async function inspectAndAdd(incoming) {
+      errorEl.textContent = "";
+      const form = new FormData();
+      incoming.forEach((file) => form.append("files", file, file.name));
+      try {
+        const response = await fetch(apiBase() + "/api/inspect", { method: "POST", body: form });
+        const text = await response.text();
+        let payload = {};
+        try {
+          payload = text ? JSON.parse(text) : {};
+        } catch {
+          throw new Error(text || response.statusText);
+        }
+        if (!response.ok) {
+          throw new Error(formatDetail(payload.detail) || response.statusText);
+        }
+        const metas = payload.files || [];
+        metas.forEach((meta, index) => {
+          const file = incoming[index];
+          if (!file) return;
+          if (files.some((item) => item.name === file.name && item.file)) return;
+          expandListed(meta, { file: file }).forEach((row) => files.push(row));
+        });
+        renderFiles();
+        const extraPages = (metas || []).filter((item) => (item.pages || 1) > 1);
+        if (extraPages.length) {
+          statusEl.textContent = extraPages.map((item) => item.name + " has " + item.pages + " pages listed separately.").join(" ");
+        }
+      } catch (err) {
+        incoming.forEach((file) => {
+          if (!files.some((item) => item.name === file.name && item.size === file.size)) {
+            files.push({ name: file.name, size: file.size, file: file });
+          }
+        });
+        renderFiles();
+        const raw = err.message || String(err);
+        errorEl.textContent = raw === "Failed to fetch"
+          ? "Cannot reach the API. Keep python main.py running and open http://127.0.0.1:8002."
+          : raw;
+      }
+    }
+
+    function fileLabel(file) {
+      if (file.page && file.pageCount > 1) {
+        return file.name + " (page " + file.page + " of " + file.pageCount + ")";
+      }
+      return file.name;
+    }
+
+    function isPathFile(item) {
+      return Boolean(item && item.fromPath);
+    }
+
+    async function loadPathFiles() {
+      const sourcePath = (document.getElementById("source-path").value || "").trim();
+      errorEl.textContent = "";
+      if (!sourcePath) {
+        errorEl.textContent = "Enter a folder path first.";
+        return;
+      }
+      statusEl.textContent = "Loading files from path…";
+      try {
+        const response = await fetch(apiBase() + "/api/folder?" + new URLSearchParams({ path: sourcePath }));
+        const text = await response.text();
+        let payload = {};
+        try {
+          payload = text ? JSON.parse(text) : {};
+        } catch {
+          throw new Error(text || response.statusText);
+        }
+        if (!response.ok) {
+          throw new Error(formatDetail(payload.detail) || response.statusText);
+        }
+        listedPath = sourcePath;
+        const uploads = files.filter((item) => !isPathFile(item));
+        const listed = [];
+        (payload.files || []).forEach((item) => {
+          expandListed(item, { fromPath: true }).forEach((row) => listed.push(row));
+        });
+        files = uploads.concat(listed);
+        renderFiles();
+        const skipped = (payload.warnings || []).join(" ");
+        statusEl.textContent = "Listed " + listed.length + " file(s). Use Up/Down/Remove, then Process package."
+          + (skipped ? " " + skipped : "");
+      } catch (err) {
+        listedPath = "";
+        const raw = err.message || String(err);
+        errorEl.textContent = raw === "Failed to fetch"
+          ? "Cannot reach the API. Keep python main.py running and open http://127.0.0.1:8002."
+          : raw;
+        statusEl.textContent = "";
+      }
+    }
+
+    document.getElementById("load-path").addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      loadPathFiles();
+    });
+    document.getElementById("source-path").addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        loadPathFiles();
+      }
+    });
+    document.getElementById("source-path").addEventListener("blur", () => {
+      const sourcePath = (document.getElementById("source-path").value || "").trim();
+      if (sourcePath && sourcePath !== listedPath) loadPathFiles();
+    });
+
     function renderFiles() {
+      app.classList.toggle("has-files", files.length > 0);
       fileList.innerHTML = "";
       files.forEach((file, index) => {
         const row = document.createElement("div");
         row.className = "file-row";
-        row.innerHTML = `<span>${index + 1}. ${escapeHtml(file.name)}</span>`;
+        row.innerHTML = `<span>${index + 1}. ${escapeHtml(fileLabel(file))}</span>`;
         const up = document.createElement("button");
         up.type = "button";
         up.textContent = "Up";
@@ -673,9 +807,31 @@
         return;
       }
       const form = new FormData();
-      if (sourcePath) form.append("source_path", sourcePath);
+      const pathNames = files.filter(isPathFile).map((item) => item.name);
+      const uploads = files.filter((item) => !isPathFile(item));
+      if (sourcePath && listedPath === sourcePath) {
+        if (pathNames.length) {
+          form.append("source_path", sourcePath);
+        }
+      } else if (sourcePath) {
+        form.append("source_path", sourcePath);
+      }
+      if (!form.has("source_path") && !uploads.length) {
+        errorEl.textContent = "Upload files, or enter a folder path and click Show files.";
+        return;
+      }
       form.append("auto_order", document.getElementById("auto-order").checked ? "true" : "false");
-      files.forEach((file) => form.append("files", file, file.name));
+      files.forEach((item) => {
+        form.append("item_name", item.name);
+        form.append("item_page", item.page ? String(item.page) : "0");
+      });
+      const seenUpload = {};
+      files.forEach((item) => {
+        if (item.file && !seenUpload[item.name]) {
+          seenUpload[item.name] = true;
+          form.append("files", item.file, item.name);
+        }
+      });
       runBtn.disabled = true;
       statusEl.textContent = "Processing…";
       hidePreview();

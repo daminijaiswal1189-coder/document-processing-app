@@ -5,10 +5,11 @@ from pathlib import Path
 from fastapi import HTTPException
 
 from config.settings import MAX_FILE_BYTES, MAX_FILES
+from services.file_order import should_split_pages
+from services.pdf_pages import pdf_page_count_path
 
 
-def load_pdfs_from_folder(raw_path: str) -> tuple[list[tuple[str, bytes]], list[str]]:
-    """Read PDFs and the Val Assembly Excel from a Valuation Package folder."""
+def _resolved_dir(raw_path: str) -> Path:
     path = Path(raw_path.strip()).expanduser()
     try:
         path = path.resolve()
@@ -16,7 +17,10 @@ def load_pdfs_from_folder(raw_path: str) -> tuple[list[tuple[str, bytes]], list[
         raise HTTPException(status_code=400, detail=f"Invalid folder path: {exc}") from exc
     if not path.is_dir():
         raise HTTPException(status_code=400, detail=f"Folder not found: {raw_path}")
+    return path
 
+
+def _folder_entries(path: Path) -> tuple[list[Path], list[str]]:
     skipped: list[str] = []
     source_paths: list[Path] = []
     for item in sorted(path.iterdir(), key=lambda p: p.name.lower()):
@@ -26,7 +30,54 @@ def load_pdfs_from_folder(raw_path: str) -> tuple[list[tuple[str, bytes]], list[
             source_paths.append(item)
         else:
             skipped.append(item.name)
+    return source_paths, skipped
 
+
+def list_folder_files(raw_path: str) -> dict:
+    """Return PDF/Excel names in a folder so the UI can show Up/Down/Remove."""
+    path = _resolved_dir(raw_path)
+    source_paths, skipped = _folder_entries(path)
+    files = []
+    warnings: list[str] = [f"Skipped non-PDF (convert to PDF before combine): {name}" for name in skipped]
+    for item in source_paths:
+        pages = pdf_page_count_path(item)
+        split = should_split_pages(item.name, pages)
+        files.append({"name": item.name, "size": item.stat().st_size, "pages": pages, "split": split})
+        if split:
+            warnings.append(f"{item.name} has {pages} pages; each page is listed so you can reorder.")
+    pdfs = [item for item in files if item["name"].lower().endswith(".pdf")]
+    if not pdfs:
+        raise HTTPException(status_code=400, detail=f"No PDF files in folder: {path}")
+    if len(pdfs) > MAX_FILES:
+        raise HTTPException(status_code=400, detail=f"Maximum {MAX_FILES} PDF files")
+    return {"path": str(path), "files": files, "warnings": warnings}
+
+
+def apply_file_order(
+    uploads: list[tuple[str, bytes]],
+    file_order: list[str],
+) -> tuple[list[tuple[str, bytes]], list[str]]:
+    """Keep only named files, in the UI order. Missing names become warnings."""
+    by_name = {name: data for name, data in uploads}
+    ordered: list[tuple[str, bytes]] = []
+    warnings: list[str] = []
+    seen: set[str] = set()
+    for name in file_order:
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        data = by_name.get(name)
+        if data is None:
+            warnings.append(f"Not in folder (skipped): {name}")
+            continue
+        ordered.append((name, data))
+    return ordered, warnings
+
+
+def load_pdfs_from_folder(raw_path: str) -> tuple[list[tuple[str, bytes]], list[str]]:
+    """Read PDFs and the Val Assembly Excel from a Valuation Package folder."""
+    path = _resolved_dir(raw_path)
+    source_paths, skipped = _folder_entries(path)
     pdf_paths = [item for item in source_paths if item.suffix.lower() == ".pdf"]
     if not pdf_paths:
         raise HTTPException(status_code=400, detail=f"No PDF files in folder: {path}")

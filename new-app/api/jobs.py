@@ -7,7 +7,9 @@ from fastapi.responses import FileResponse
 
 from config.settings import OUTPUT_DIR
 from models.job import JobResult
-from services.folder_loader import load_pdfs_from_folder
+from services.file_order import should_split_pages
+from services.folder_loader import apply_file_order, list_folder_files, load_pdfs_from_folder
+from services.pdf_pages import expand_uploads_by_page, pdf_page_count
 from services.orchestrator import process_uploads
 
 router = APIRouter()
@@ -38,14 +40,23 @@ async def create_job(
     files: list[UploadFile] | None = File(default=None),
     source_path: str = Form(default=""),
     auto_order: bool = Form(default=True),
+    file_order: list[str] | None = Form(default=None),
+    item_name: list[str] | None = Form(default=None),
+    item_page: list[int] | None = Form(default=None),
 ) -> JobResult:
     uploads: list[tuple[str, bytes]] = []
     warnings: list[str] = []
     folder = (source_path or "").strip()
+    ordered_names = [name for name in (file_order or []) if (name or "").strip()]
+    row_names = [name for name in (item_name or []) if (name or "").strip()]
     if folder:
         folder_uploads, folder_warnings = load_pdfs_from_folder(folder)
-        uploads.extend(folder_uploads)
         warnings.extend(folder_warnings)
+        if ordered_names and not row_names:
+            folder_uploads, order_warnings = apply_file_order(folder_uploads, ordered_names)
+            warnings.extend(order_warnings)
+            warnings.append("Using the file order shown in the list.")
+        uploads.extend(folder_uploads)
 
     for upload in files or []:
         name = upload.filename or ""
@@ -57,6 +68,12 @@ async def create_job(
         if not data:
             raise HTTPException(status_code=400, detail=f"{name} is empty")
         uploads.append((name, data))
+
+    if row_names:
+        row_pages = list(item_page or [])
+        uploads, page_warnings = expand_uploads_by_page(uploads, row_names, row_pages)
+        warnings.extend(page_warnings)
+        warnings.append("Using the page order shown in the list.")
 
     if not uploads:
         raise HTTPException(
@@ -80,6 +97,38 @@ async def create_job(
     result.preview_url = f"{base}/api/jobs/{result.job_id}/preview"
     JOBS[result.job_id] = result
     return result
+
+
+@router.get("/folder")
+def list_source_folder(path: str = "") -> dict:
+    folder = (path or "").strip()
+    if not folder:
+        raise HTTPException(status_code=400, detail="Enter a Valuation Package folder path")
+    return list_folder_files(folder)
+
+
+@router.post("/inspect")
+async def inspect_uploads(files: list[UploadFile] | None = File(default=None)) -> dict:
+    """Return page counts so the UI can list each PDF page for reordering."""
+    listed: list[dict] = []
+    for upload in files or []:
+        name = upload.filename or ""
+        if not name or name.startswith("~$"):
+            continue
+        data = await upload.read()
+        pages = 1
+        if name.lower().endswith(".pdf") and data:
+            try:
+                pages = pdf_page_count(data)
+            except Exception:
+                pages = 1
+        listed.append({
+            "name": name,
+            "size": len(data or b""),
+            "pages": pages,
+            "split": should_split_pages(name, pages),
+        })
+    return {"files": listed}
 
 
 @router.get("/jobs/{job_id}", response_model=JobResult)
