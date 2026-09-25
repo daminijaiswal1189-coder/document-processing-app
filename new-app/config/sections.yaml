@@ -4,11 +4,29 @@
 
 expected_order:
   - name: Cover Letter
-    aliases: ["Cover Letter", "Cover Page"]
+    aliases:
+      - "Cover Letter"
+      - "Cover Page"
+      - "Valuation Pkg"
+      - "Valuation Package"
     label: Cover Letter
     split_pages: true
-    split_first_label: Cover Letter
-    split_label: Action required page {page}
+    split_page_labels:
+      - Cover Letter
+      - Action required page 1
+      - Action required page 2
+      - Action required page 3
+      - ADP/ACP Failure excess page after 12 months (Current year Testing Method)
+      - ADP/ACP Failure excess page after 12 months (Prior year Testing Method)
+      - ADP/ACP Failure excess page Current year
+      - 415 Failure information
+      - ADP/ACP Failure letter
+      - 402g Failure letter
+      - 415 Failure letter
+      - Year End Recap
+      - Compliance Report 1
+      - Compliance Report 2
+      - Compliance Report 3
   - name: Action Required
     aliases: ["Action Required", "IMMEDIATE ACTION REQUIRED"]
     label: Action required
@@ -51,29 +69,33 @@ expected_order:
     label: Compliance Reports
     aliases: ["Compliance and Administrative", "Compliance Reports", "Overview and Descriptions"]
   - name: Test Summary
-    aliases: ["Test Summary", "Compliance Summary"]
+    aliases: ["Test Summary", "Compliance Summary", "ResultSumm", "Result"]
   - name: Compensation Limit Failure Summary
-    aliases: ["Compensation Limit Failure", "SHMa"]
+    aliases: ["Compensation Limit Failure", "SHMaVar", "SHMa"]
   - name: Combined Testing Report
     aliases: ["Combined Testing Report"]
   - name: Failed Test Notice
     aliases: ["Failed Test Notice", "Failure Notice", "Excess Summary", "Excess Return Notice", "Failed Compliance Testing"]
   - name: Variance
-    aliases: ["Variance Report", "Variance"]
+    aliases: ["Variance Report", "Variance", "MaVar"]
+  - name: PS Variance
+    aliases: ["PSVar"]
+  - name: SHNE Variance
+    aliases: ["SHNEVar"]
   - name: Contribution Analysis
-    aliases: ["Contribution Analysis"]
+    aliases: ["Contribution Analysis", "ContriAnalysis", "Contri"]
   - name: HCE/Key
-    aliases: ["HCE/Key", "HCE Key"]
+    aliases: ["HCE/Key", "HCE Key", "HCEKey"]
   - name: Future HCE
-    aliases: ["Future HCE"]
+    aliases: ["Future HCE", "FYHCE"]
   - name: ADP/ACP
-    aliases: ["ADP/ACP", "ADP ACP", "ADP Test", "ACP Test"]
+    aliases: ["ADP/ACP", "ADP ACP", "ADP Test", "ACP Test", "ADP"]
   - name: "402(g)"
-    aliases: ["402(g)", "402g"]
+    aliases: ["402(g)", "402g", "402G", "402"]
   - name: "410(b)"
-    aliases: ["410(b)", "410b"]
+    aliases: ["410(b)", "410b", "410B", "410"]
   - name: "401(a)(4)"
-    aliases: ["401(a)(4)", "401(a)(4) Test"]
+    aliases: ["401(a)(4)", "401(a)(4) Test", "401a4", "401a"]
   - name: Average Benefit Percentage Test
     aliases: ["Average Benefit Percentage", "ABPT"]
   - name: BRF
@@ -81,9 +103,9 @@ expected_order:
   - name: "414(s)"
     aliases: ["414(s)", "414s"]
   - name: "415"
-    aliases: ["415 Limit", "415 Test", "Section 415"]
+    aliases: ["415 Limit", "415 Test", "Section 415", "415"]
   - name: Top Heavy
-    aliases: ["Top Heavy", "Top-Heavy"]
+    aliases: ["Top Heavy", "Top-Heavy", "TH"]
   - name: Census
     aliases: ["Census"]
 

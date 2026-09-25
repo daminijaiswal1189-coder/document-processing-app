@@ -8,18 +8,71 @@ FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 
 def test_sop_rank_cover_before_census():
-    assert sop_rank("01_cover-letter.pdf") < sop_rank("16_census.pdf")
-    assert sop_rank("10_adp-acp.pdf") < sop_rank("11_402g.pdf")
+    assert sop_rank("222222 2024 401k Valuation Pkg.pdf") < sop_rank("2024Census.pdf")
+    assert sop_rank("2024ADP-ACP.pdf") < sop_rank("2024402G.pdf")
 
 
 def test_order_uploads_follows_sop_not_filename_sort():
     uploads = [
-        ("16_census.pdf", b"%PDF"),
-        ("01_cover-letter.pdf", b"%PDF"),
-        ("08_contribution-analysis.pdf", b"%PDF"),
+        ("2024Census.pdf", b"%PDF"),
+        ("222222 2024 401k Valuation Pkg.pdf", b"%PDF"),
+        ("2024ContriAnalysis.pdf", b"%PDF"),
     ]
     ordered = [name for name, _ in order_uploads(uploads)]
-    assert ordered == ["01_cover-letter.pdf", "08_contribution-analysis.pdf", "16_census.pdf"]
+    assert ordered == [
+        "222222 2024 401k Valuation Pkg.pdf",
+        "2024ContriAnalysis.pdf",
+        "2024Census.pdf",
+    ]
+
+
+def test_auto_order_uses_folder_keywords():
+    from services.file_order import display_label, matched_spec, order_uploads, sop_rank
+
+    assert matched_spec("123456 2025 401k Valuation Pkg.pdf")["name"] == "Cover Letter"
+    assert display_label("123456 2025 401k Valuation Pkg.pdf") == "Cover Letter"
+    assert matched_spec("2025ResultSumm.pdf")["name"] == "Test Summary"
+    assert matched_spec("2025HCEKey.pdf")["name"] == "HCE/Key"
+    assert matched_spec("2026FYHCE.pdf")["name"] == "Future HCE"
+    assert matched_spec("2025ADP-ACP.pdf")["name"] == "ADP/ACP"
+    assert matched_spec("2025410B.pdf")["name"] == "410(b)"
+    assert matched_spec("2025MaVar.pdf")["name"] == "Variance"
+    assert matched_spec("2025SHMaVar.pdf")["name"] == "Compensation Limit Failure Summary"
+    assert matched_spec("2025PSVar.pdf")["name"] == "PS Variance"
+    assert matched_spec("2025SHNEVar.pdf")["name"] == "SHNE Variance"
+    assert matched_spec("2025402G.pdf")["name"] == "402(g)"
+    assert matched_spec("2025ContriAnalysis.pdf")["name"] == "Contribution Analysis"
+    assert matched_spec("2025TH.pdf")["name"] == "Top Heavy"
+    assert matched_spec("2025Top Heavy.pdf")["name"] == "Top Heavy"
+    assert matched_spec("2025415.pdf")["name"] == "415"
+    assert matched_spec("2025Census.pdf")["name"] == "Census"
+    assert matched_spec("2025401a4.pdf")["name"] == "401(a)(4)"
+    assert matched_spec("2025ABPT.pdf")["name"] == "Average Benefit Percentage Test"
+    assert matched_spec("2025414s.pdf")["name"] == "414(s)"
+    assert sop_rank("2025SHMaVar.pdf") < sop_rank("2025MaVar.pdf")
+    assert sop_rank("123456 2025 401k Valuation Pkg.pdf") < sop_rank("2025ResultSumm.pdf")
+    names = [
+        "2025Census.pdf",
+        "2025TH.pdf",
+        "2025415.pdf",
+        "2025ContriAnalysis.pdf",
+        "2025402G.pdf",
+        "2025ADP-ACP.pdf",
+        "2026FYHCE.pdf",
+        "2025HCEKey.pdf",
+        "2025ResultSumm.pdf",
+        "123456 2025 401k Valuation Pkg.pdf",
+        "2025414s.pdf",
+        "2025ABPT.pdf",
+        "2025401a4.pdf",
+        "2025410B.pdf",
+        "2025MaVar.pdf",
+        "2025SHMaVar.pdf",
+    ]
+    ordered = [name for name, _ in order_uploads([(name, b"%PDF") for name in names])]
+    assert ordered[0] == "123456 2025 401k Valuation Pkg.pdf"
+    assert ordered[1] == "2025ResultSumm.pdf"
+    assert ordered[-1] == "2025Census.pdf"
 
 
 def test_list_folder_files_returns_names():
@@ -28,9 +81,9 @@ def test_list_folder_files_returns_names():
     folder = FIXTURES / "assemble-current-fail"
     listed = list_folder_files(str(folder))
     names = [item["name"] for item in listed["files"]]
-    assert any(name.lower().startswith("01_cover") for name in names)
-    assert names[0].lower().startswith("01_cover")
-    assert any(name.lower().startswith("16_census") for name in names)
+    assert any("Valuation Pkg" in name for name in names)
+    assert "Valuation Pkg" in names[0]
+    assert any(name == "2024Census.pdf" for name in names)
 
 
 def test_expand_multipage_pdf_as_separate_rows(tmp_path):
@@ -77,16 +130,40 @@ def test_packet_outline_labels_and_split():
     from services.file_order import display_label, should_split_pages
 
     assert should_split_pages("Cover Page.pdf", 2) is True
-    assert should_split_pages("03_action-required.pdf", 3) is False
-    assert should_split_pages("07_compliance-reports.pdf", 3) is False
-    assert should_split_pages("16_census.pdf", 2) is False
-    assert display_label("01_cover-letter.pdf") == "Cover Letter"
-    assert display_label("01_cover-letter.pdf", page=1, page_count=4) == "Cover Letter"
-    assert display_label("01_cover-letter.pdf", page=2, page_count=4) == "Action required page 1"
-    assert display_label("01_cover-letter.pdf", page=3, page_count=4) == "Action required page 2"
-    assert display_label("01_cover-letter.pdf", page=4, page_count=4) == "Action required page 3"
-    assert display_label("03_action-required.pdf") == "Action required"
-    assert display_label("07_compliance-reports.pdf") == "Compliance Reports"
+    assert should_split_pages("Action Required.pdf", 3) is False
+    assert should_split_pages("Compliance Reports.pdf", 3) is False
+    assert should_split_pages("2024Census.pdf", 2) is False
+    assert display_label("222222 2024 401k Valuation Pkg.pdf") == "Cover Letter"
+    assert display_label("222222 2024 401k Valuation Pkg.pdf", page=1, page_count=15) == "Cover Letter"
+    assert display_label("222222 2024 401k Valuation Pkg.pdf", page=2, page_count=15) == "Action required page 1"
+    assert display_label("222222 2024 401k Valuation Pkg.pdf", page=3, page_count=15) == "Action required page 2"
+    assert display_label("222222 2024 401k Valuation Pkg.pdf", page=4, page_count=15) == "Action required page 3"
+    assert (
+        display_label("222222 2024 401k Valuation Pkg.pdf", page=5, page_count=15)
+        == "ADP/ACP Failure excess page after 12 months (Current year Testing Method)"
+    )
+    assert (
+        display_label("222222 2024 401k Valuation Pkg.pdf", page=6, page_count=15)
+        == "ADP/ACP Failure excess page after 12 months (Prior year Testing Method)"
+    )
+    assert display_label("222222 2024 401k Valuation Pkg.pdf", page=7, page_count=15) == "ADP/ACP Failure excess page Current year"
+    assert display_label("222222 2024 401k Valuation Pkg.pdf", page=8, page_count=15) == "415 Failure information"
+    assert display_label("222222 2024 401k Valuation Pkg.pdf", page=9, page_count=15) == "ADP/ACP Failure letter"
+    assert display_label("222222 2024 401k Valuation Pkg.pdf", page=10, page_count=15) == "402g Failure letter"
+    assert display_label("222222 2024 401k Valuation Pkg.pdf", page=11, page_count=15) == "415 Failure letter"
+    assert display_label("222222 2024 401k Valuation Pkg.pdf", page=12, page_count=15) == "Year End Recap"
+    assert display_label("222222 2024 401k Valuation Pkg.pdf", page=13, page_count=15) == "Compliance Report 1"
+    assert display_label("222222 2024 401k Valuation Pkg.pdf", page=14, page_count=15) == "Compliance Report 2"
+    assert display_label("222222 2024 401k Valuation Pkg.pdf", page=15, page_count=15) == "Compliance Report 3"
+    from services.file_order import list_file_meta
+
+    meta = list_file_meta("222222 2024 401k Valuation Pkg.pdf", 1, 15)
+    assert meta["split"] is True
+    assert len(meta["labels"]) == 15
+    assert meta["labels"][0] == "Cover Letter"
+    assert meta["labels"][-1] == "Compliance Report 3"
+    assert display_label("Action Required.pdf") == "Action required"
+    assert display_label("Compliance Reports.pdf") == "Compliance Reports"
     assert (
         display_label("ADP ACP Failure excess page after 12 months (Current year Testing Method).pdf")
         == "ADP/ACP Failure excess page after 12 months (Current year Testing Method)"
@@ -100,7 +177,7 @@ def test_packet_outline_labels_and_split():
     assert display_label("ADP ACP Failure letter.pdf") == "ADP/ACP Failure letter"
     assert display_label("402g Failure letter.pdf") == "402g Failure letter"
     assert display_label("415 Failure letter.pdf") == "415 Failure letter"
-    assert display_label("05_year-end-recap.pdf") == "Year End Recap"
+    assert display_label("Year End Recap.pdf") == "Year End Recap"
 
 
 def test_non_cover_multipage_pdf_is_not_split(tmp_path):
@@ -114,13 +191,13 @@ def test_non_cover_multipage_pdf_is_not_split(tmp_path):
     doc = fitz.open()
     doc.new_page()
     doc.new_page()
-    pdf = folder / "16_census.pdf"
+    pdf = folder / "2024Census.pdf"
     doc.save(pdf)
     doc.close()
     listed = list_folder_files(str(folder))
     assert listed["files"][0]["pages"] == 2
     assert listed["files"][0]["split"] is False
-    assert should_split_pages("16_census.pdf", 2) is False
+    assert should_split_pages("2024Census.pdf", 2) is False
     assert should_split_pages("Cover Page.pdf", 2) is True
     assert not any("each page is listed" in w for w in listed["warnings"])
 
@@ -129,12 +206,18 @@ def test_apply_file_order_keeps_ui_sequence():
     from services.folder_loader import apply_file_order
 
     uploads = [
-        ("01_cover-letter.pdf", b"a"),
-        ("10_adp-acp.pdf", b"b"),
-        ("16_census.pdf", b"c"),
+        ("222222 2024 401k Valuation Pkg.pdf", b"a"),
+        ("2024ADP-ACP.pdf", b"b"),
+        ("2024Census.pdf", b"c"),
     ]
-    ordered, warnings = apply_file_order(uploads, ["16_census.pdf", "01_cover-letter.pdf"])
-    assert [name for name, _ in ordered] == ["16_census.pdf", "01_cover-letter.pdf"]
+    ordered, warnings = apply_file_order(
+        uploads,
+        ["2024Census.pdf", "222222 2024 401k Valuation Pkg.pdf"],
+    )
+    assert [name for name, _ in ordered] == [
+        "2024Census.pdf",
+        "222222 2024 401k Valuation Pkg.pdf",
+    ]
     assert warnings == []
 
 
@@ -163,5 +246,5 @@ def test_load_folder_and_process(tmp_path, monkeypatch):
     monkeypatch.setattr(save_service, "OUTPUT_DIR", tmp_path)
     result = process_uploads(uploads, auto_order=True, extra_warnings=warnings)
     assert result.filename == "222222_2024-Valuation.pdf"
-    assert result.source_files[0].lower().startswith("01_cover")
-    assert any(name.lower().startswith("16_census") for name in result.source_files)
+    assert "Valuation Pkg" in result.source_files[0]
+    assert any(name == "2024Census.pdf" for name in result.source_files)

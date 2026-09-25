@@ -122,13 +122,33 @@ def _write_combined(path: Path, pages: list[tuple[str, list[str]]]) -> None:
     doc.close()
 
 
+SPLIT_FILENAMES = {
+    "Cover Letter": "222222 2024 401k Valuation Pkg.pdf",
+    "Compliance Summary": "2024ResultSumm.pdf",
+    "Action Required": "Action Required.pdf",
+    "Variance": "2024MaVar.pdf",
+    "Year End Recap": "Year End Recap.pdf",
+    "Important Information": "Important Information.pdf",
+    "Compliance Reports": "Compliance Reports.pdf",
+    "Contribution Analysis": "2024ContriAnalysis.pdf",
+    "Future HCE": "2025FYHCE.pdf",
+    "ADP/ACP": "2024ADP-ACP.pdf",
+    "402(g)": "2024402G.pdf",
+    "410(b)": "2024410B.pdf",
+    "401(a)(4)": "2024401a4.pdf",
+    "415 Limit": "2024415.pdf",
+    "Top Heavy": "2024TH.pdf",
+    "Census": "2024Census.pdf",
+}
+
+
 def _write_split(folder: Path, pages: list[tuple[str, list[str]]]) -> None:
     folder.mkdir(parents=True, exist_ok=True)
-    for index, (title, lines) in enumerate(pages, start=1):
+    for title, lines in pages:
         doc = fitz.open()
         _page(doc, title, lines)
-        slug = title.lower().replace("/", "-").replace("(", "").replace(")", "").replace(" ", "-")
-        doc.save(folder / f"{index:02d}_{slug}.pdf")
+        name = SPLIT_FILENAMES.get(title) or f"{title}.pdf"
+        doc.save(folder / name)
         doc.close()
 
 

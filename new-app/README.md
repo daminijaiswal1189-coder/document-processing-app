@@ -55,7 +55,7 @@ Upload these from `tests/fixtures/` at http://127.0.0.1:8002
 | `01_pass_no_action.pdf` | All sections; tests pass; Rule G keep |
 | `02_current_fail_qnec.pdf` | CURRENT fail, QNEC, top heavy, after 12 months |
 | `03_prior_fail_offcalendar.pdf` | PRIOR fail; plan year 10/01/2017–09/30/2018 → `333333_2017-Valuation.pdf` |
-| `assemble-current-fail/*.pdf` | Same as #2 split into 16 files — select all, keep 01–16 order |
+| `assemble-current-fail/*.pdf` | Same as #2 split into source files named like `222222 2024 401k Valuation Pkg.pdf`, `2024ResultSumm.pdf`, `2024Census.pdf` |
 
 Regenerate:
 

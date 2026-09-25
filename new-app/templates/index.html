@@ -509,7 +509,7 @@
         <div class="drop" id="drop">
           <label class="drop-pick">
             <span class="drop-title">Upload files</span>
-            <span class="drop-hint">Drop PDFs and Excel, or click Browse files. Only a multi-page Cover Letter is split: page 1 is Cover Letter, later pages are Action required page 1, 2, 3. Other files stay one row. Auto-order sorts them. Paste a folder path below, then Show files.</span>
+            <span class="drop-hint">Drop PDFs and Excel, or click Browse files. A 15-page Cover Letter / Valuation Pkg splits into Cover Letter, Action required pages, excess notices, letters, Year End Recap, and Compliance Report 1–3. Other files stay one row. Auto-order sorts them.</span>
             <span class="browse-files">Browse files</span>
             <input id="picker" type="file" accept=".pdf,.xlsx,.xls" multiple />
           </label>
@@ -636,14 +636,41 @@
       });
     });
 
+    function coverPageTitles() {
+      return [
+        "Cover Letter",
+        "Action required page 1",
+        "Action required page 2",
+        "Action required page 3",
+        "ADP/ACP Failure excess page after 12 months (Current year Testing Method)",
+        "ADP/ACP Failure excess page after 12 months (Prior year Testing Method)",
+        "ADP/ACP Failure excess page Current year",
+        "415 Failure information",
+        "ADP/ACP Failure letter",
+        "402g Failure letter",
+        "415 Failure letter",
+        "Year End Recap",
+        "Compliance Report 1",
+        "Compliance Report 2",
+        "Compliance Report 3",
+      ];
+    }
+
+    function isCoverFile(name) {
+      const n = String(name || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+      return n.includes("coverletter") || n.includes("coverpage")
+        || n.includes("valuationpkg") || n.includes("valuationpackage");
+    }
+
     function expandListed(meta, extra) {
       const pages = Number(meta && meta.pages) || 1;
       const name = meta.name;
       const size = meta.size || 0;
       const rank = Number(meta && meta.rank);
-      const labels = Array.isArray(meta && meta.labels) ? meta.labels : [];
-      const pdf = String(name || "").toLowerCase().endsWith(".pdf");
-      const split = meta.split === true;
+      const apiLabels = Array.isArray(meta && meta.labels) ? meta.labels : [];
+      const cover = isCoverFile(name);
+      const titles = coverPageTitles();
+      const split = meta.split === true || (cover && pages > 1);
       if (split && pages > 1) {
         const rows = [];
         for (let page = 1; page <= pages; page += 1) {
@@ -652,8 +679,8 @@
             size: size,
             page: page,
             pageCount: pages,
-            rank: Number.isFinite(rank) ? rank : 1000,
-            label: labels[page - 1] || (name + " (page " + page + " of " + pages + ")"),
+            rank: Number.isFinite(rank) ? rank : (cover ? 0 : 1000),
+            label: titles[page - 1] || apiLabels[page - 1] || ("Cover Letter page " + page),
           }, extra));
         }
         return rows;
@@ -662,7 +689,7 @@
         name: name,
         size: size,
         rank: Number.isFinite(rank) ? rank : 1000,
-        label: (labels[0] || (meta && meta.label) || name),
+        label: (apiLabels[0] || (meta && meta.label) || name),
       }, extra)];
     }
 
@@ -676,6 +703,15 @@
         const page = (a.page || 0) - (b.page || 0);
         if (page) return page;
         return String(a.name || "").localeCompare(String(b.name || ""));
+      });
+    }
+
+    function retitleCoverRows() {
+      const titles = coverPageTitles();
+      const covers = files.filter((item) => isCoverFile(item.name) && !item.page);
+      if (covers.length < 2) return;
+      covers.forEach((item, index) => {
+        item.label = titles[index] || ("Cover Letter page " + (index + 1));
       });
     }
 
@@ -720,6 +756,7 @@
           expandListed(meta, { file: file }).forEach((row) => files.push(row));
         });
         sortFilesIfAutoOrder();
+        retitleCoverRows();
         renderFiles();
         const extraPages = (metas || []).filter((item) => item.split);
         statusEl.textContent = extraPages.length
@@ -770,6 +807,7 @@
         });
         files = uploads.concat(listed);
         sortFilesIfAutoOrder();
+        retitleCoverRows();
         renderFiles();
         const skipped = (payload.warnings || []).join(" ");
         statusEl.textContent = "Listed " + listed.length + " file(s). Use Up/Down/Remove, then Process package."

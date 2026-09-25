@@ -20,21 +20,35 @@ def _spec_aliases(spec: dict) -> list[str]:
     return [str(spec.get("name") or "")] + [str(a) for a in (spec.get("aliases") or [])]
 
 
-def matched_spec(filename: str) -> dict | None:
+def _best_section(filename: str) -> tuple[int, dict] | None:
+    """Longest keyword match wins so SHMaVar is not treated as MaVar, 401a4 is not 401k, etc."""
     name = _norm(filename)
-    for spec in load_section_specs():
-        if any(_norm(alias) and _norm(alias) in name for alias in _spec_aliases(spec)):
-            return spec
-    return None
+    best: tuple[int, int, dict] | None = None
+    for index, spec in enumerate(load_section_specs()):
+        for alias in _spec_aliases(spec):
+            token = _norm(alias)
+            if not token or token not in name:
+                continue
+            score = (len(token), -index)
+            if best is None or score > (best[0], best[1]):
+                best = (len(token), -index, spec)
+    if not best:
+        return None
+    _, neg_index, spec = best
+    return -neg_index, spec
+
+
+def matched_spec(filename: str) -> dict | None:
+    found = _best_section(filename)
+    return found[1] if found else None
 
 
 def sop_rank(filename: str) -> int:
     """Lower rank = earlier in TEST23 combine order. Unknown files stay last."""
-    name = _norm(filename)
-    for index, spec in enumerate(load_section_specs()):
-        if any(_norm(alias) and _norm(alias) in name for alias in _spec_aliases(spec)):
-            return index
-    return 1000 + len(name)
+    found = _best_section(filename)
+    if found:
+        return found[0]
+    return 1000 + len(_norm(filename))
 
 
 def should_split_pages(filename: str, pages: int) -> bool:
@@ -44,19 +58,37 @@ def should_split_pages(filename: str, pages: int) -> bool:
     return bool(spec and spec.get("split_pages"))
 
 
+COVER_PACKET_PAGE_LABELS = [
+    "Cover Letter",
+    "Action required page 1",
+    "Action required page 2",
+    "Action required page 3",
+    "ADP/ACP Failure excess page after 12 months (Current year Testing Method)",
+    "ADP/ACP Failure excess page after 12 months (Prior year Testing Method)",
+    "ADP/ACP Failure excess page Current year",
+    "415 Failure information",
+    "ADP/ACP Failure letter",
+    "402g Failure letter",
+    "415 Failure letter",
+    "Year End Recap",
+    "Compliance Report 1",
+    "Compliance Report 2",
+    "Compliance Report 3",
+]
+
+
 def display_label(filename: str, page: int = 0, page_count: int = 1) -> str:
     """UI name after upload/split (packet outline titles, not the raw filename)."""
     spec = matched_spec(filename)
     if spec:
         base = str(spec.get("label") or spec.get("name") or filename)
-        split_label = str(spec.get("split_label") or "")
-        first_label = str(spec.get("split_first_label") or "")
-        if page > 0 and page_count > 1 and split_label:
-            if first_label:
-                if page == 1:
-                    return first_label
-                return split_label.replace("{page}", str(page - 1))
-            return split_label.replace("{page}", str(page))
+        page_labels = [str(item) for item in (spec.get("split_page_labels") or []) if str(item).strip()]
+        if spec.get("split_pages") and not page_labels:
+            page_labels = list(COVER_PACKET_PAGE_LABELS)
+        if page > 0 and page_count > 1 and page_labels:
+            if page <= len(page_labels):
+                return page_labels[page - 1]
+            return f"{base} page {page}"
         return base
     if page > 0 and page_count > 1:
         return f"{filename} (page {page} of {page_count})"

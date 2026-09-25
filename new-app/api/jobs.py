@@ -108,7 +108,7 @@ def list_source_folder(path: str = "") -> dict:
 
 
 @router.post("/inspect")
-    async def inspect_uploads(files: list[UploadFile] | None = File(default=None)) -> dict:
+async def inspect_uploads(files: list[UploadFile] | None = File(default=None)) -> dict:
     """Return page counts so the UI can list each PDF page for reordering."""
     listed: list[dict] = []
     for upload in files or []:
