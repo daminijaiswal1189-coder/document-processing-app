@@ -16,3 +16,4 @@ sample-files/_preview/
 sample-files/*.heic
 sample-files/*.HEIC
 sample-files/*.mp4
+dist/

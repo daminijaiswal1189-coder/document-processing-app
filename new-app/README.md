@@ -6,7 +6,8 @@ Phase 1: upload PDFs **or** a Valuation Package folder path → assemble in TEST
 
 Page removal, bookmarks, SSN scan, and Outlook are not applied yet.
 
-Developer onboarding (folder map, pipeline, how to change rules): [`docs/Developer-Guide.md`](docs/Developer-Guide.md).
+Developer onboarding (folder map, pipeline, how to change rules): [`docs/Developer-Guide.md`](docs/Developer-Guide.md).  
+Solution architecture (for submission / handover): [`docs/Solution-Architecture.md`](docs/Solution-Architecture.md).
 
 ## Run
 
@@ -20,6 +21,21 @@ python main.py
 
 UI: http://127.0.0.1:8002  
 API docs: http://127.0.0.1:8002/docs
+
+## Client PC (Windows, Python already installed)
+
+Do not minify the backend into one pasted file. The app still needs `pip install pymupdf` (a binary wheel).
+
+On a developer Mac/PC:
+
+```bash
+cd new-app
+python3 scripts/build_dist.py
+```
+
+That writes `dist/install_moa.py` — **email that one text file** (no zip).
+
+On the client: save the paste as `install_moa.py`, run `python install_moa.py`, double-click `moa-app\run.bat`, open http://127.0.0.1:8002. The first run uses the network once for pip.
 
 Optional: set `MOA_OUTPUT_DIR` to a Windows path such as `K:\Mutual of America` in production.
 
