@@ -3,10 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 
 from config.settings import OUTPUT_DIR
 from models.job import JobResult
+from services.change_marks import apply_highlights, load_marks
 from services.file_order import list_file_meta
 from services.folder_loader import apply_file_order, list_folder_files, load_pdfs_from_folder
 from services.pdf_pages import expand_uploads_by_page, pdf_page_count
@@ -40,6 +41,7 @@ async def create_job(
     files: list[UploadFile] | None = File(default=None),
     source_path: str = Form(default=""),
     auto_order: bool = Form(default=True),
+    rewrite_sources: bool = Form(default=False),
     file_order: list[str] | None = Form(default=None),
     item_name: list[str] | None = Form(default=None),
     item_page: list[int] | None = Form(default=None),
@@ -87,6 +89,7 @@ async def create_job(
             auto_order=auto_order,
             extra_warnings=warnings,
             source_folder=folder or None,
+            rewrite_sources=rewrite_sources,
         )
     except HTTPException:
         raise
@@ -152,7 +155,7 @@ def download_job_pdf(job_id: str) -> FileResponse:
 
 
 @router.get("/jobs/{job_id}/preview")
-def preview_job_pdf(job_id: str) -> FileResponse:
+def preview_job_pdf(job_id: str, highlight: bool = False) -> Response:
     found = _saved_pdf(job_id)
     if not found:
         raise HTTPException(
@@ -160,13 +163,30 @@ def preview_job_pdf(job_id: str) -> FileResponse:
             detail="Assembled PDF not found. Restart python main.py, then click Process package again. Do not reuse an old preview URL.",
         )
     path, filename = found
-    return FileResponse(
-        path,
+    if not highlight:
+        return FileResponse(
+            path,
+            media_type="application/pdf",
+            filename=filename,
+            content_disposition_type="inline",
+            headers={"Cache-Control": "no-store"},
+        )
+    data = apply_highlights(path, _preview_marks(job_id, path))
+    return Response(
+        content=data,
         media_type="application/pdf",
-        filename=filename,
-        content_disposition_type="inline",
-        headers={"Cache-Control": "no-store"},
+        headers={
+            "Content-Disposition": f'inline; filename="{filename}"',
+            "Cache-Control": "no-store",
+        },
     )
+
+
+def _preview_marks(job_id: str, pdf_path: Path) -> list[dict]:
+    job = JOBS.get(job_id)
+    if job is not None:
+        return [item.model_dump() for item in job.highlights]
+    return load_marks(pdf_path)
 
 
 @router.get("/jobs/{job_id}/email")

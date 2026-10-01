@@ -7,9 +7,11 @@ import fitz
 
 from models.job import JobResult
 from models.review import ValidationItem
+from models.job import HighlightMark
 from services import (
     assembly_log,
     bookmark_service,
+    change_marks,
     file_order,
     outlook_service,
     pdf_assembler,
@@ -20,6 +22,7 @@ from services import (
     rules_engine,
     save_service,
     source_profile,
+    source_rewrite,
     ssn_scan,
 )
 
@@ -30,6 +33,7 @@ def process_uploads(
     auto_order: bool = True,
     extra_warnings: list[str] | None = None,
     source_folder: str | None = None,
+    rewrite_sources: bool = False,
 ) -> JobResult:
     """
     TEST23 pipeline:
@@ -38,6 +42,7 @@ def process_uploads(
     """
     job_id = uuid.uuid4().hex[:12]
     warnings = list(extra_warnings or [])
+    highlights: list[dict] = []
     pdfs, excels = _split_uploads(uploads)
     valuation, summary_texts = _split_summaries(pdfs)
     ordered = file_order.order_uploads(valuation) if auto_order else list(valuation)
@@ -66,7 +71,9 @@ def process_uploads(
         decisions = rules_engine.evaluate(profile)
         removed = pdf_modifier.apply_decisions(doc, decisions)
         recap_removed = pdf_modifier.apply_recap_bullets(doc, decisions)
-        filled = pdf_modifier.fill_qnec_placeholders(doc, profile)
+        filled = pdf_modifier.fill_qnec_placeholders(doc, profile, highlights)
+        if rewrite_sources:
+            warnings.extend(source_rewrite.apply_source_rewrites(doc, profile, highlights))
         bookmark_count = bookmark_service.add_bookmarks(
             doc,
             profile,
@@ -87,6 +94,7 @@ def process_uploads(
         )
         dest = save_service.testing_folder_from_source(source_folder)
         path = save_service.save_package(doc, job_id, profile, dest_dir=dest)
+        change_marks.save_marks(path, highlights)
         if dest:
             saved_copy = str(dest / path.name)
             warnings.append(f"Also saved to {saved_copy}")
@@ -127,6 +135,7 @@ def process_uploads(
         review=review,
         rule_decisions=decisions,
         warnings=warnings,
+        highlights=[HighlightMark(**item) for item in highlights],
         source_files=[name for name, _data in ordered] + [name for name, _data in excels] + [name for name, _text in summary_texts],
         download_url=f"/api/jobs/{job_id}/pdf",
         email_subject=subject,

@@ -8,6 +8,7 @@ import yaml
 from config.settings import CONFIG_DIR
 from models.plan_profile import PlanProfile
 from models.review import RuleDecision
+from services.change_marks import add_mark
 
 _TITLE_ONLY = re.compile(
     r"^(action required|annual valuation report(?:/action required)?)\s*$",
@@ -189,7 +190,11 @@ def _is_empty_text(text: str) -> bool:
     return not cleaned or bool(_TITLE_ONLY.match(cleaned))
 
 
-def fill_qnec_placeholders(doc: fitz.Document, profile: PlanProfile) -> list[str]:
+def fill_qnec_placeholders(
+    doc: fitz.Document,
+    profile: PlanProfile,
+    marks: list[dict] | None = None,
+) -> list[str]:
     """TEST23 §C: write QNEC amounts onto the CURRENT Excess Return Notice."""
     filled: list[str] = []
     total = profile.total_qnec
@@ -197,6 +202,7 @@ def fill_qnec_placeholders(doc: fitz.Document, profile: PlanProfile) -> list[str
         original = page.get_text("text") or ""
         if "$X,XXX,XXX.XX" not in original:
             continue
+        placed: list[str] = []
         updated = re.sub(r"\s+", " ", original)
         if total is not None:
             money = _money(total)
@@ -206,12 +212,14 @@ def fill_qnec_placeholders(doc: fitz.Document, profile: PlanProfile) -> list[str
             )
             updated = updated.replace("ADP/ACP test is $X,XXX,XXX.XX", f"ADP/ACP test is {money}")
             filled.append(f"total={money}")
+            placed.append(money)
         if profile.adp_qnec is not None:
             updated = updated.replace(
                 "The ADP QNEC is $X,XXX,XXX.XX",
                 f"The ADP QNEC is {_money(profile.adp_qnec)}",
             )
             filled.append(f"adp={_money(profile.adp_qnec)}")
+            placed.append(_money(profile.adp_qnec))
         else:
             updated = re.sub(r"The ADP QNEC is \$X,XXX,XXX\.XX\.?\n?", "", updated)
         if profile.acp_qnec is not None:
@@ -220,6 +228,7 @@ def fill_qnec_placeholders(doc: fitz.Document, profile: PlanProfile) -> list[str
                 f"The ACP QNEC is {_money(profile.acp_qnec)}",
             )
             filled.append(f"acp={_money(profile.acp_qnec)}")
+            placed.append(_money(profile.acp_qnec))
         else:
             updated = re.sub(r"The ACP QNEC is \$X,XXX,XXX\.XX\.?\n?", "", updated)
         if profile.deferral_refund is not None:
@@ -228,6 +237,7 @@ def fill_qnec_placeholders(doc: fitz.Document, profile: PlanProfile) -> list[str
                 f"Deferral Contribution of {_money(profile.deferral_refund)}",
             )
             filled.append(f"deferral={_money(profile.deferral_refund)}")
+            placed.append(_money(profile.deferral_refund))
         else:
             updated = re.sub(r"Deferral Contribution of \$X,XXX,XXX\.XX\.?\s*", "", updated)
         if profile.match_refund is not None:
@@ -236,12 +246,20 @@ def fill_qnec_placeholders(doc: fitz.Document, profile: PlanProfile) -> list[str
                 f"Match Contribution of {_money(profile.match_refund)}",
             )
             filled.append(f"match={_money(profile.match_refund)}")
+            placed.append(_money(profile.match_refund))
         else:
             updated = re.sub(r"Match Contribution of \$X,XXX,XXX\.XX\.?\s*", "", updated)
         if updated != original:
             page.add_redact_annot(page.rect, fill=(1, 1, 1), text="")
             page.apply_redactions()
             page.insert_textbox(fitz.Rect(54, 54, 558, 738), updated, fontsize=11, fontname="helv")
+            seen: set[str] = set()
+            for phrase in placed:
+                if phrase in seen:
+                    continue
+                seen.add(phrase)
+                for hit in page.search_for(phrase):
+                    add_mark(marks, page.number, hit, "Filled amount")
     return filled
 
 

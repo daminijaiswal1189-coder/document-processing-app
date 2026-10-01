@@ -8,6 +8,15 @@ from models.plan_profile import PlanProfile
 from models.review import RuleDecision, ReviewResult
 
 
+class HighlightMark(BaseModel):
+    page: int
+    x0: float
+    y0: float
+    x1: float
+    y1: float
+    label: str = ""
+
+
 class JobResult(BaseModel):
     job_id: str
     filename: str
@@ -18,6 +27,7 @@ class JobResult(BaseModel):
     rule_decisions: list[RuleDecision] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     source_files: list[str] = Field(default_factory=list)
+    highlights: list[HighlightMark] = Field(default_factory=list)
     download_url: str = ""
     preview_url: str = ""
     email_subject: str = ""

@@ -204,7 +204,7 @@
       flex-direction: column;
       justify-content: center;
       gap: 8px;
-      flex: 0 0 150px;
+      flex: 0 0 210px;
     }
     button {
       background: var(--accent);
@@ -446,11 +446,19 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
+      gap: 8px;
       padding: 6px 10px;
       border-bottom: 1px solid var(--line);
       font-size: 0.75rem;
       flex: 0 0 auto;
     }
+    .preview-tools {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-left: auto;
+    }
+    .preview-note { color: var(--muted); font-size: 0.7rem; }
     .preview-frame {
       flex: 1 1 auto;
       width: 100%;
@@ -517,6 +525,7 @@
         </div>
         <div class="run-wrap">
           <label class="check"><input id="auto-order" type="checkbox" checked /> Auto-order</label>
+          <label class="check"><input id="rewrite-sources" type="checkbox" /> Retype dates and HCE %</label>
           <button id="run" type="button">Process package</button>
         </div>
       </div>
@@ -569,7 +578,14 @@
       <div class="card preview-wrap" id="preview-wrap">
         <div class="preview-bar">
           <span>Assembled file</span>
-          <button type="button" class="btn ghost" id="close-preview">Close preview</button>
+          <div class="preview-tools">
+            <label class="check" for="highlight-changes">
+              <input id="highlight-changes" type="checkbox" checked />
+              <span id="highlight-label">Highlight changes</span>
+            </label>
+            <span class="preview-note" id="highlight-note"></span>
+            <button type="button" class="btn ghost" id="close-preview">Close preview</button>
+          </div>
         </div>
         <iframe id="preview" class="preview-frame" title="Assembled valuation package"></iframe>
       </div>
@@ -586,9 +602,11 @@
     const previewLink = document.getElementById("preview-link");
     const closePreview = document.getElementById("close-preview");
     const previewFrame = document.getElementById("preview");
+    const highlightChanges = document.getElementById("highlight-changes");
     const app = document.querySelector(".app");
     let files = [];
     let currentPreview = "";
+    let highlightCount = 0;
     let listedPath = "";
 
     document.getElementById("hide-upload").addEventListener("click", () => setUploadOpen(false));
@@ -922,6 +940,7 @@
         return;
       }
       form.append("auto_order", document.getElementById("auto-order").checked ? "true" : "false");
+      form.append("rewrite_sources", document.getElementById("rewrite-sources").checked ? "true" : "false");
       files.forEach((item) => {
         form.append("item_name", item.name);
         form.append("item_page", item.page ? String(item.page) : "0");
@@ -974,6 +993,30 @@
       return apiBase() + path;
     }
 
+    function previewSrc() {
+      if (!currentPreview) return "";
+      const base = currentPreview.split("?")[0];
+      const params = new URLSearchParams();
+      if (highlightChanges.checked) params.set("highlight", "1");
+      params.set("v", String(Date.now()));
+      return base + "?" + params.toString();
+    }
+
+    function syncHighlightLabel() {
+      document.getElementById("highlight-label").textContent = highlightCount
+        ? "Highlight changes (" + highlightCount + ")"
+        : "Highlight changes";
+      document.getElementById("highlight-note").textContent = highlightCount
+        ? ""
+        : "No rewritten text on this file.";
+    }
+
+    function showPreview() {
+      previewFrame.src = previewSrc();
+      results.classList.add("preview-on");
+      previewLink.textContent = "Hide preview";
+    }
+
     function hidePreview() {
       previewFrame.removeAttribute("src");
       results.classList.remove("preview-on");
@@ -987,9 +1030,10 @@
         hidePreview();
         return;
       }
-      previewFrame.src = currentPreview;
-      results.classList.add("preview-on");
-      previewLink.textContent = "Hide preview";
+      showPreview();
+    });
+    highlightChanges.addEventListener("change", () => {
+      if (results.classList.contains("preview-on")) showPreview();
     });
     closePreview.addEventListener("click", hidePreview);
 
@@ -1002,6 +1046,8 @@
       const link = document.getElementById("download");
       const url = downloadUrl(job);
       currentPreview = previewUrl(job);
+      highlightCount = (job.highlights || []).length;
+      syncHighlightLabel();
       previewLink.dataset.url = currentPreview;
       previewLink.textContent = "Preview";
       const profile = job.plan_profile || {};
