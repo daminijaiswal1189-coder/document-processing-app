@@ -1,2 +1,3 @@
-# document-processing-app
-A modular document processing and validation platform.
+# MOA Valuation Package Automation
+
+The application is in [`new-app`](new-app/README.md).
