@@ -7,19 +7,21 @@ A shorter string leaves a small gap. A longer string can overlap the next word.
 from __future__ import annotations
 
 import re
+from datetime import datetime
 
 import fitz
 
 from models.plan_profile import PlanProfile
 from services.change_marks import add_mark
+from services.package_polish import cover_date_text
 from services.pdf_modifier import _base_font, _rgb
 
 _MONTH = (
     r"(?:January|February|March|April|May|June|July|August|September|October|November|December|"
     r"Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)"
 )
-_COVER_WORD = re.compile(rf"({_MONTH})\s+0([1-9])\b", re.I)
 _COVER_SLASH = re.compile(r"\b(\d{1,2})/0([1-9])/(20\d{2})\b")
+_LETTER_DATE = re.compile(rf"({_MONTH})\s+(\d{{1,2}}),\s+(20\d{{2}})", re.I)
 _PERCENT = re.compile(r"(\d{1,2}(?:\.\d+)?)\s*%")
 _NHCE = re.compile(r"NHCE[^%\n]{0,80}?(\d{1,2}(?:\.\d+)?)\s*%", re.I)
 
@@ -60,18 +62,29 @@ def apply_source_rewrites(
     notes: list[str] = []
     if doc.page_count:
         changed = _rewrite_cover_day(doc[0], marks)
+        today = cover_date_text()
         if changed:
-            notes.append(f"Cover letter day rewritten to a single digit ({changed} place(s)). Check the letterhead spacing.")
+            notes.append(f"Cover letter date set to {today} ({changed} place(s)). Check the letterhead spacing.")
         else:
-            notes.append("Cover day rewrite: no zero-padded day (01) found on the cover.")
+            notes.append(f"Cover letter date left as printed (already {today}, or no letter date was found).")
     notes.extend(_rewrite_402g_dates(doc, profile, marks))
     notes.extend(_rewrite_hce_percent(doc, profile, marks))
     return notes
 
 
-def _rewrite_cover_day(page: fitz.Page, marks: list[dict] | None = None) -> int:
+def _rewrite_cover_day(page: fitz.Page, marks: list[dict] | None = None, when: datetime | None = None) -> int:
+    today = cover_date_text(when)
+
     def transform(text: str) -> str | None:
-        updated = _COVER_WORD.sub(r"\1 \2", text)
+        updated = text
+
+        def _to_today(match: re.Match[str]) -> str:
+            found = f"{match.group(1)} {int(match.group(2))}, {match.group(3)}"
+            if found.lower() == today.lower() and match.group(0).lower() == today.lower():
+                return match.group(0)
+            return today
+
+        updated = _LETTER_DATE.sub(_to_today, updated)
         updated = _COVER_SLASH.sub(r"\1/\2/\3", updated)
         return updated if updated != text else None
 

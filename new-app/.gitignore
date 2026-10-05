@@ -18,3 +18,4 @@ sample-files/*.heic
 sample-files/*.HEIC
 sample-files/*.mp4
 dist/
+docs/drive-download-*.zip

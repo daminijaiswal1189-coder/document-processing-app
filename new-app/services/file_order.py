@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import yaml
@@ -113,5 +114,14 @@ def list_file_meta(name: str, size: int, pages: int) -> dict:
     }
 
 
+_LOCATION = re.compile(r"loc(?:ation)?[\s._-]*0*(\d+)", re.I)
+
+
+def location_index(filename: str) -> int:
+    """Loc 1 before Loc 2. A file with no location stays first in its section."""
+    match = _LOCATION.search(filename or "")
+    return int(match.group(1)) if match else 0
+
+
 def order_uploads(uploads: list[tuple[str, bytes]]) -> list[tuple[str, bytes]]:
-    return sorted(uploads, key=lambda item: (sop_rank(item[0]), item[0].lower()))
+    return sorted(uploads, key=lambda item: (sop_rank(item[0]), location_index(item[0]), item[0].lower()))

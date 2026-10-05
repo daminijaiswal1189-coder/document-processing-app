@@ -74,7 +74,13 @@ def parse_excel(data: bytes) -> dict[str, Any]:
     notes = " ".join(value for key, value in cells.items() if "note" in key or "comment" in key)
     if re.search(r"variance", notes, re.I):
         overlay["variance_report"] = True
-    if re.search(r"contribution and/or adjustment|census adjustment|contributions required", notes, re.I):
+    if re.search(
+        r"contribution and/or adjustment|census adjustment|contributions required|include contribution",
+        notes,
+        re.I,
+    ):
+        overlay["contributions_required"] = True
+    if _yes_no(_first(cells, "annual allocation", "true up", "true-up")) is True:
         overlay["contributions_required"] = True
     if re.search(r"safe harbor|\bSH\b", notes, re.I):
         overlay["safe_harbor"] = True
@@ -86,6 +92,8 @@ def parse_excel(data: bytes) -> dict[str, Any]:
         overlay["top_heavy"] = top_heavy
     if reclass is True:
         overlay["returns_required"] = False
+    if notes:
+        overlay["assembly_notes"] = notes
     return {key: value for key, value in overlay.items() if value not in (None, "")}
 
 

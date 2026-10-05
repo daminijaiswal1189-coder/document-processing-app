@@ -42,12 +42,14 @@ def test_cover_day_and_402g_and_hce_rewrite_in_place():
     )
     notes = apply_source_rewrites(doc, profile)
     text = "\n".join(page.get_text("text") or "" for page in doc)
-    assert "January 1, 2025" in text
+    from services.package_polish import cover_date_text
+
+    assert cover_date_text() in text
     assert "January 01, 2025" not in text
     assert "01/01/2024" in text
     assert "12/31/2024" in text
     assert "HCE 4%" in text
-    assert any("single digit" in note for note in notes)
+    assert any("Cover letter date set to" in note for note in notes)
     doc.close()
 
 

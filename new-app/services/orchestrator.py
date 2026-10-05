@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime, timezone
 
 import fitz
+from fastapi import HTTPException
 
 from models.job import JobResult
 from models.review import ValidationItem
@@ -16,6 +17,7 @@ from services import (
     outlook_service,
     pdf_assembler,
     pdf_extractor,
+    package_polish,
     pdf_modifier,
     plan_profile_service,
     review_service,
@@ -45,6 +47,13 @@ def process_uploads(
     highlights: list[dict] = []
     pdfs, excels = _split_uploads(uploads)
     valuation, summary_texts = _split_summaries(pdfs)
+    valuation, brf_notes = package_polish.exclude_brf_uploads(valuation)
+    warnings.extend(brf_notes)
+    if not valuation:
+        raise HTTPException(
+            status_code=400,
+            detail="BRF reports are not included, and no other PDF was uploaded.",
+        )
     ordered = file_order.order_uploads(valuation) if auto_order else list(valuation)
     doc = pdf_assembler.merge_pdfs(ordered)
     email_path = ""
@@ -52,6 +61,7 @@ def process_uploads(
     saved_copy = ""
     subject = ""
     try:
+        warnings.extend(package_polish.reorder_inner_pages(doc))
         profile = pdf_extractor.extract_plan_profile(doc)
         overlays: list[dict] = []
         for name, data in excels:
@@ -72,8 +82,12 @@ def process_uploads(
         removed = pdf_modifier.apply_decisions(doc, decisions)
         recap_removed = pdf_modifier.apply_recap_bullets(doc, decisions)
         filled = pdf_modifier.fill_qnec_placeholders(doc, profile, highlights)
+        warnings.extend(package_polish.remove_disallowed_wording(doc))
+        warnings.extend(package_polish.drop_brf_pages(doc))
         if rewrite_sources:
             warnings.extend(source_rewrite.apply_source_rewrites(doc, profile, highlights))
+        profile.detected_sections = pdf_extractor.detect_sections(doc)
+        review.items.extend(package_polish.package_checks(doc, profile))
         bookmark_count = bookmark_service.add_bookmarks(
             doc,
             profile,
@@ -101,7 +115,13 @@ def process_uploads(
         eml = outlook_service.write_draft(path.parent / f"{path.stem}.eml", profile, path.name)
         email_path = str(eml)
         log_file = str(
-            assembly_log.append_row(save_service.OUTPUT_DIR / "ValAssemblyLog.xlsx", profile, path.name, job_id)
+            assembly_log.append_row(
+                save_service.OUTPUT_DIR / "ValAssemblyLog.xlsx",
+                profile,
+                path.name,
+                job_id,
+                doc=doc,
+            )
         )
         subject = outlook_service.email_subject(profile)
     finally:

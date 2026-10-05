@@ -56,5 +56,6 @@ class PlanProfile(BaseModel):
     moa_logo_found: bool | None = None
     moa_stamp_detail: str = ""
     extraction_warnings: list[str] = Field(default_factory=list)
+    assembly_notes: str = ""
     source_page_count: int = 0
     extra: dict[str, Any] = Field(default_factory=dict)

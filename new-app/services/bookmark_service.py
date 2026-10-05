@@ -27,6 +27,8 @@ def add_bookmarks(
     toc: list[list] = []
     seen: set[str] = set()
     for section in profile.detected_sections:
+        if section.name == "BRF":
+            continue
         title = titles.get(section.name)
         if not title:
             continue

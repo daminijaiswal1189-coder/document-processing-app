@@ -35,6 +35,7 @@ TEST_PATTERNS: dict[str, list[str]] = {
     "testing_method": [
         r"Testing\s*Method\s*[:#]?\s*(CURRENT|PRIOR)",
         r"\b(CURRENT|PRIOR)\s+METHOD\b",
+        r"\b(Prior|Current)\s+(?:YEAR|Testing)\b",
         r"\b(CURRENT|PRIOR)\b",
     ],
     "top_heavy_percent": [

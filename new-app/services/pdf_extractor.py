@@ -53,7 +53,7 @@ def extract_plan_profile(doc: fitz.Document) -> PlanProfile:
     plan_type = _clean_line(_first_match(cover_text, COVER_PATTERNS.get("plan_type") or []))
 
     year_start, year_end = _plan_year(cover_text or full_text)
-    method = _testing_method(cover_text) or _testing_method(full_text)
+    method = _testing_method(cover_text) or _testing_method(full_text) or _current_when_adp_has_no_prior(full_text)
     top_heavy_percent = _money_or_percent(full_text, TEST_PATTERNS["top_heavy_percent"])
 
     flags = {
@@ -289,6 +289,19 @@ def _load_sections() -> list[dict[str, Any]]:
     path = CONFIG_DIR / "sections.yaml"
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     return list(data.get("expected_order") or [])
+
+
+def detect_sections(doc: fitz.Document) -> list[DetectedSection]:
+    return _detect_sections(doc)
+
+
+def _current_when_adp_has_no_prior(text: str) -> str | None:
+    """No 'Prior Testing' on the ADP/ACP results page means current-year testing."""
+    if not re.search(r"ADP\s*/\s*ACP\s+Test\s+Results", text or "", re.I):
+        return None
+    if re.search(r"prior\s+testing", text or "", re.I):
+        return "PRIOR"
+    return "CURRENT"
 
 
 def _detect_sections(doc: fitz.Document) -> list[DetectedSection]:
