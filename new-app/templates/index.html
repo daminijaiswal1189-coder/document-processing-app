@@ -564,12 +564,14 @@
           <div class="tabs">
             <button type="button" class="active" data-tab="rules" id="tab-btn-rules">Keep / remove</button>
             <button type="button" data-tab="checks" id="tab-btn-checks">Checks</button>
+            <button type="button" data-tab="validations" id="tab-btn-validations">Validations</button>
             <button type="button" data-tab="profile">Profile</button>
             <button type="button" data-tab="warnings" id="tab-btn-warnings">Notes</button>
           </div>
           <div class="pane">
             <div id="tab-rules" class="rule-board"></div>
             <table id="tab-checks" class="hidden"></table>
+            <table id="tab-validations" class="hidden"></table>
             <table id="tab-profile" class="hidden"></table>
             <ul id="tab-warnings" class="hidden"></ul>
           </div>
@@ -639,7 +641,7 @@
       btn.addEventListener("click", () => {
         document.querySelectorAll(".tabs button").forEach((item) => item.classList.remove("active"));
         btn.classList.add("active");
-        ["rules", "checks", "profile", "warnings"].forEach((name) => {
+        ["rules", "checks", "validations", "profile", "warnings"].forEach((name) => {
           document.getElementById("tab-" + name).classList.toggle("hidden", name !== btn.dataset.tab);
         });
         const summary = document.querySelector(".summary");
@@ -1193,6 +1195,15 @@
         const mark = item.passed ? "PASS" : "FAIL";
         return `<tr><th>${escapeHtml(item.label)}</th><td class="${cls}">${mark} — ${escapeHtml(item.detail)}</td></tr>`;
       }).join("");
+      const failedItems = items.filter((item) => !item.passed);
+      document.getElementById("tab-btn-validations").textContent = failedItems.length
+        ? "Validations (" + failedItems.length + " fail)"
+        : "Validations";
+      document.getElementById("tab-validations").innerHTML = failedItems.length
+        ? failedItems.map((item) => (
+          `<tr><th>${escapeHtml(item.label)}</th><td class="fail">FAIL — ${escapeHtml(item.detail)}</td></tr>`
+        )).join("")
+        : `<tr><td colspan="2">No failed checks.</td></tr>`;
       return { passed, failed, ssn: review && review.ssn_found };
     }
 

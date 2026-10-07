@@ -6,6 +6,7 @@ from services.orchestrator import process_uploads
 from services.package_builder import PARAGRAPHS, build_valuation_with_action_paragraphs
 from services.plan_profile_service import finalize_profile
 from services.rules_engine import evaluate
+from services.outlook_service import email_subject
 from services.source_docs import build_assembly_excel, build_summary_pdf
 from services.source_profile import parse_excel, parse_summary_text
 from models.plan_profile import PlanProfile
@@ -29,7 +30,18 @@ def test_excel_reads_current_method_from_assembly_template():
     assert overlay["testing_method"] == "CURRENT"
     assert overlay["plan_type"] == "403b"
     assert overlay["hce_current"] is True
+    assert overlay["rework"] is False
+    assert overlay["rush"] is False
     assert overlay.get("adp_reclassified") is None
+
+
+def test_email_subject_names_rework_and_rush():
+    base = dict(plan_number="800643", plan_name="Example Plan", plan_year_end="06/30/2026")
+    tail = "800643 - Example Plan - PYE 06/30/2026"
+    assert email_subject(PlanProfile(**base)) == f"MOA - {tail}"
+    assert email_subject(PlanProfile(**base, rework=True)) == f"MOA - Rework - {tail}"
+    assert email_subject(PlanProfile(**base, rush=True)) == f"MOA - Rush - {tail}"
+    assert email_subject(PlanProfile(**base, rework=True, rush=True)) == f"MOA - Rush Rework - {tail}"
 
 
 def test_summary_reads_adp_fail_and_other_tests_pass():

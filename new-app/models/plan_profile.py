@@ -42,6 +42,8 @@ class PlanProfile(BaseModel):
     safe_harbor: bool | None = None
     catchup_disallowed: bool | None = None
     per_payroll_match: bool | None = None
+    rework: bool | None = None
+    rush: bool | None = None
     keep_excess_summary: bool | None = None
     after_12_months: bool | None = None
     adp_qnec: float | None = None

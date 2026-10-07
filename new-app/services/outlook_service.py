@@ -7,11 +7,26 @@ from models.plan_profile import PlanProfile
 
 
 def email_subject(profile: PlanProfile) -> str:
-    """TEST23 §P: subject MUST start with MOA, then plan number, name, PYE."""
+    """Subject starts with MOA, then plan number, name, and PYE.
+
+    Rework and Rush come from the valuation package Excel. Yes on either one
+    is named in the subject. Both Yes is Rush Rework.
+    """
     number = (profile.plan_number or "UNKNOWN").strip()
     name = (profile.plan_name or "UNKNOWN").strip()
     pye = (profile.plan_year_end or "UNKNOWN").strip()
-    return f"MOA | {number} | {name} | PYE {pye}"
+    tail = f"{number} - {name} - PYE {pye}"
+    rush = profile.rush is True
+    rework = profile.rework is True
+    if rush and rework:
+        prefix = "MOA - Rush Rework"
+    elif rush:
+        prefix = "MOA - Rush"
+    elif rework:
+        prefix = "MOA - Rework"
+    else:
+        prefix = "MOA"
+    return f"{prefix} - {tail}"
 
 
 def write_draft(path: Path, profile: PlanProfile, filename: str) -> Path:

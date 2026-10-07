@@ -68,6 +68,8 @@ def parse_excel(data: bytes) -> dict[str, Any]:
         "hce_current": _yes_no(_first(cells, "hce current", "hce currently")),
         "hce_future": _yes_no(_first(cells, "hce future")),
         "per_payroll_match": _yes_no(_first(cells, "per payroll match", "per payroll")),
+        "rework": _yes_no(_column(cells, "rework")),
+        "rush": _yes_no(_column(cells, "rush")),
     }
     if method is None and "sh" in _first(cells, "prior", "current", "adp/acp").lower():
         overlay["safe_harbor"] = True
@@ -181,6 +183,14 @@ def _summary_pye(text: str) -> str | None:
         )
         return parsed.strftime("%m/%d/%Y")
     return _normalize_date(raw)
+
+
+def _column(cells: dict[str, str], name: str) -> str:
+    """Read a header cell, not a longer question that merely contains the word."""
+    for key, value in cells.items():
+        if key == name or key.startswith(name + " "):
+            return value
+    return ""
 
 
 def _first(cells: dict[str, str], *needles: str) -> str:

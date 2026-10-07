@@ -154,6 +154,16 @@ def test_assembly_log_follows_the_client_columns(tmp_path):
     sheet = book.active
     assert sheet["A1"].value == "Omni Plan Number"
     assert sheet["E2"].value == "Allocation Completed"
+    assert str(sheet["A1"].fill.fgColor.rgb).endswith("808080")
+    assert str(sheet["C1"].fill.fgColor.rgb).endswith("8EA9DB")
+    assert str(sheet["U1"].fill.fgColor.rgb).endswith("808080")
+    assert sheet["U1"].value == "Does this plan use New Comp"
+    assert sheet.row_dimensions[1].height == 116
+    assert sheet.row_dimensions[2].height == 58.5
+    assert sheet.row_dimensions[3].height == 15.5
+    assert sheet["A5"].value in (None, "")
+    assert sheet.row_dimensions[5].height is None
+    assert "A1:A2" in [str(item) for item in sheet.merged_cells.ranges]
     assert sheet["A3"].value == "800643"
     assert "DEERFIELD" in sheet["B3"].value
     assert sheet["C3"].value == "Yes"

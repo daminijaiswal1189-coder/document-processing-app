@@ -7,6 +7,7 @@ Failed Comp Limit is always N/A for MOA.
 from __future__ import annotations
 
 import re
+from copy import copy
 from pathlib import Path
 
 import fitz
@@ -14,8 +15,12 @@ from openpyxl import Workbook, load_workbook
 from openpyxl.comments import Comment
 from openpyxl.worksheet.datavalidation import DataValidation
 
+from config.settings import ROOT
 from models.plan_profile import PlanProfile
 from services.source_profile import parse_summary_text
+
+_TEMPLATE = ROOT / "logs-updation.xlsx"
+_INSTRUCTION = "Update it from Result Summary"
 
 _HEADERS = [
     "Omni Plan Number",
@@ -54,26 +59,101 @@ def append_row(
     """Append one assembled plan using the logs-updation.xlsx columns."""
     del filename, job_id
     log_path.parent.mkdir(parents=True, exist_ok=True)
+    saved: list[tuple[list, str]] = []
     if log_path.is_file():
         book = load_workbook(log_path)
         sheet = book.active
-        if sheet.cell(1, 1).value != _HEADERS[0]:
-            book.remove(sheet)
-            sheet = book.create_sheet("Val Assembly Log", 0)
-            _write_headers(sheet)
+        if not _uses_template_layout(sheet):
+            saved = _saved_rows(sheet)
+            book, sheet = _book_from_template()
+            for old_values, old_note in saved:
+                _write_data_row(sheet, _next_data_row(sheet), old_values, old_note)
     else:
-        book = Workbook()
-        sheet = book.active
-        sheet.title = "Val Assembly Log"
-        _write_headers(sheet)
+        book, sheet = _book_from_template()
     values, note = build_log_row(profile, doc)
-    row = _next_data_row(sheet)
-    for col, value in enumerate(values, start=1):
-        sheet.cell(row, col, value)
-    if note:
-        sheet.cell(row, 5).comment = Comment(note, "MOA")
+    _write_data_row(sheet, _next_data_row(sheet), values, note)
+    if not sheet.data_validations.dataValidation:
+        _add_lists(sheet)
     book.save(log_path)
     return log_path
+
+
+def _uses_template_layout(sheet) -> bool:
+    fill = sheet["A1"].fill
+    color = ""
+    if fill.fgColor is not None and fill.patternType == "solid" and fill.fgColor.type == "rgb":
+        color = str(fill.fgColor.rgb or "")
+    return sheet.row_dimensions[1].height == 116 and color.endswith("808080") and _instruction_row(sheet) is None
+
+
+def _instruction_row(sheet) -> int | None:
+    for index in range(3, (sheet.max_row or 2) + 1):
+        value = sheet.cell(index, 1).value
+        if isinstance(value, str) and value.startswith(_INSTRUCTION):
+            return index
+    return None
+
+
+def _book_from_template():
+    if _TEMPLATE.is_file():
+        book = load_workbook(_TEMPLATE)
+        sheet = book.active
+        _strip_instructions(sheet)
+        return book, sheet
+    book = Workbook()
+    sheet = book.active
+    sheet.title = "Val Assembly Log"
+    _write_headers(sheet)
+    return book, sheet
+
+
+def _strip_instructions(sheet) -> None:
+    """Keep the header formatting. Do not copy the fill-instruction notes."""
+    start = _instruction_row(sheet)
+    if start is None:
+        return
+    last = sheet.max_row or start
+    sheet.delete_rows(start, last - start + 1)
+    for index in list(sheet.row_dimensions):
+        if index >= start:
+            del sheet.row_dimensions[index]
+
+
+def _saved_rows(sheet) -> list[tuple[list, str]]:
+    if sheet.cell(1, 1).value != _HEADERS[0]:
+        return []
+    rows: list[tuple[list, str]] = []
+    for index in range(3, (sheet.max_row or 2) + 1):
+        first = str(sheet.cell(index, 1).value or "").strip()
+        if not first.isdigit():
+            continue
+        values = [sheet.cell(index, col).value for col in range(1, 22)]
+        comment = sheet.cell(index, 5).comment
+        rows.append((values, comment.text if comment is not None else ""))
+    return rows
+
+
+def _clone_row_style(sheet, source: int, target: int) -> None:
+    for col in range(1, 22):
+        src = sheet.cell(source, col)
+        dst = sheet.cell(target, col)
+        if src.has_style:
+            dst.font = copy(src.font)
+            dst.border = copy(src.border)
+            dst.fill = copy(src.fill)
+            dst.number_format = src.number_format
+            dst.protection = copy(src.protection)
+            dst.alignment = copy(src.alignment)
+    height = sheet.row_dimensions[source].height
+    if height:
+        sheet.row_dimensions[target].height = height
+
+
+def _write_data_row(sheet, row: int, values: list, note: str) -> None:
+    for col, value in enumerate(values, start=1):
+        sheet.cell(row, col).value = value if value not in ("",) else None
+    if note:
+        sheet.cell(row, 5).comment = Comment(note, "MOA")
 
 
 def build_log_row(profile: PlanProfile, doc: fitz.Document | None = None) -> tuple[list[str], str]:
@@ -129,9 +209,14 @@ def _add_lists(sheet) -> None:
 
 
 def _next_data_row(sheet) -> int:
-    if (sheet.max_row or 1) < 3:
-        return 3
-    return sheet.max_row + 1
+    last = 2
+    for index in range(3, (sheet.max_row or 2) + 1):
+        if sheet.cell(index, 1).value not in (None, ""):
+            last = index
+    nxt = last + 1
+    if sheet.cell(3, 1).has_style and not sheet.cell(nxt, 1).has_style:
+        _clone_row_style(sheet, 3, nxt)
+    return nxt
 
 
 def _allocation(profile: PlanProfile) -> tuple[str, str]:

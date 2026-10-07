@@ -72,7 +72,7 @@ def test_variance_contributions_excess_and_current_recap(tmp_path, monkeypatch):
     assert "Safe Harbor Plan" not in text
     assert "not administered by Mutual of America" in text
     assert "employer match contribution is calculated" in text
-    assert result.email_subject.startswith("MOA | 777777 |")
+    assert result.email_subject.startswith("MOA - 777777 -")
     assert Path(result.email_path).is_file()
     assert Path(result.log_path).is_file()
     assert result.review and result.review.ssn_found is False
