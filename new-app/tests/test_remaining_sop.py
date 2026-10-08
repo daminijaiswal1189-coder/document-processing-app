@@ -156,12 +156,14 @@ def test_recap_top_heavy_and_catchup_and_match(tmp_path, monkeypatch):
     assert "employer match contribution is calculated" not in drop_text
 
 
-def test_ssn_scan_flags_census_page(tmp_path, monkeypatch):
-    result = _process(tmp_path, monkeypatch, build_remaining_sop_pdf(include_ssn=True))
-    assert result.review.ssn_found is True
-    assert result.review.ssn_pages
-    item = next(i for i in result.review.items if i.code == "ssn_scan")
-    assert item.passed is False
+def test_ssn_scan_stops_assembly(tmp_path, monkeypatch):
+    import pytest
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as raised:
+        _process(tmp_path, monkeypatch, build_remaining_sop_pdf(include_ssn=True))
+    assert raised.value.status_code == 400
+    assert "Social Security number" in raised.value.detail
 
 
 def test_saves_copy_into_testing_folder(tmp_path, monkeypatch):

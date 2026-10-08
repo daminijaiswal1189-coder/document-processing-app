@@ -11,6 +11,7 @@ from models.review import ValidationItem
 from models.job import HighlightMark
 from services import (
     assembly_log,
+    assembly_stops,
     bookmark_service,
     change_marks,
     file_order,
@@ -63,9 +64,14 @@ def process_uploads(
     try:
         warnings.extend(package_polish.reorder_inner_pages(doc))
         profile = pdf_extractor.extract_plan_profile(doc)
+        pdf_plan_name = profile.plan_name
         overlays: list[dict] = []
+        excel_plan_name: str | None = None
         for name, data in excels:
-            overlays.append(source_profile.parse_excel(data))
+            parsed = source_profile.parse_excel(data)
+            if parsed.get("plan_name"):
+                excel_plan_name = str(parsed["plan_name"])
+            overlays.append(parsed)
             warnings.append(f"Read Val Assembly Excel: {name}")
         for name, text in summary_texts:
             overlays.append(source_profile.parse_summary_text(text))
@@ -86,6 +92,8 @@ def process_uploads(
         warnings.extend(package_polish.drop_brf_pages(doc))
         if rewrite_sources:
             warnings.extend(source_rewrite.apply_source_rewrites(doc, profile, highlights))
+        else:
+            warnings.extend(source_rewrite.apply_cover_date(doc, highlights))
         profile.detected_sections = pdf_extractor.detect_sections(doc)
         review.items.extend(package_polish.package_checks(doc, profile))
         bookmark_count = bookmark_service.add_bookmarks(
@@ -106,6 +114,15 @@ def process_uploads(
                 else "SSN found on page(s) " + ", ".join(str(page) for page in ssn_pages),
             )
         )
+        reasons = assembly_stops.stop_reasons(
+            doc,
+            profile,
+            source_files=[name for name, _data in ordered],
+            excel_plan_name=excel_plan_name,
+            pdf_plan_name=pdf_plan_name,
+        )
+        if reasons:
+            raise HTTPException(status_code=400, detail="Assembly stopped.\n" + "\n".join(reasons))
         dest = save_service.testing_folder_from_source(source_folder)
         path = save_service.save_package(doc, job_id, profile, dest_dir=dest)
         change_marks.save_marks(path, highlights)

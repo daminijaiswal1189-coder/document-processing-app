@@ -5,7 +5,13 @@ import re
 import fitz
 
 # TEST23 / SRD: flag XXX-XX-XXXX and skip EIN (XX-XXXXXXX) and bare 6-digit plan numbers.
-_SSN = re.compile(r"\b(\d{3}-\d{2}-\d{4})\b")
+_SSN = re.compile(
+    r"\b("
+    r"\d{3}-\d{2}-\d{4}"
+    r"|\d{3}-[Xx*]{2}-[\dXx*]{4}"
+    r"|[Xx*]{3}-[Xx*]{2}-[\dXx*]{4}"
+    r")\b"
+)
 _EIN = re.compile(r"\b\d{2}-\d{7}\b")
 
 

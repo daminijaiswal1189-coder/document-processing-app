@@ -259,7 +259,7 @@ def _cover_date_check(doc: fitz.Document) -> ValidationItem:
         code="cover_date_today",
         label="Cover date is today",
         passed=False,
-        detail=f"Cover date is {found}. It should be {today}. Check Retype dates and HCE %.",
+        detail=f"Cover date is {found}. It should be {today}.",
     )
 
 

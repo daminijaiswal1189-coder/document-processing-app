@@ -54,6 +54,17 @@ def _format_percent(value: float) -> str:
     return f"{value:g}%"
 
 
+def apply_cover_date(doc: fitz.Document, marks: list[dict] | None = None) -> list[str]:
+    """Set the cover letter date to today. This runs on every Process."""
+    if not doc.page_count:
+        return []
+    changed = _rewrite_cover_day(doc[0], marks)
+    today = cover_date_text()
+    if changed:
+        return [f"Cover letter date set to {today} ({changed} place(s)). Check the letterhead spacing."]
+    return [f"Cover letter date left as printed (already {today}, or no letter date was found)."]
+
+
 def apply_source_rewrites(
     doc: fitz.Document,
     profile: PlanProfile,

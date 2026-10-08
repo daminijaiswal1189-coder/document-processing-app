@@ -1,5 +1,8 @@
 from pathlib import Path
 
+import pytest
+from fastapi import HTTPException
+
 from services.file_order import order_uploads, sop_rank
 from services.folder_loader import load_pdfs_from_folder
 from services.orchestrator import process_uploads
@@ -231,8 +234,10 @@ def test_process_folder_uses_file_order(tmp_path, monkeypatch):
     names = [name for name, _ in uploads]
     reversed_names = list(reversed(names))
     ordered, _ = apply_file_order(uploads, reversed_names)
-    result = process_uploads(ordered, auto_order=False, extra_warnings=warnings)
-    assert result.source_files[0] == reversed_names[0]
+    with pytest.raises(HTTPException) as raised:
+        process_uploads(ordered, auto_order=False, extra_warnings=warnings)
+    assert raised.value.status_code == 400
+    assert "Assembly stopped" in raised.value.detail
 
 
 def test_load_folder_and_process(tmp_path, monkeypatch):
@@ -244,7 +249,8 @@ def test_load_folder_and_process(tmp_path, monkeypatch):
     import services.save_service as save_service
 
     monkeypatch.setattr(save_service, "OUTPUT_DIR", tmp_path)
-    result = process_uploads(uploads, auto_order=True, extra_warnings=warnings)
-    assert result.filename == "222222_2024-Valuation.pdf"
-    assert "Valuation Pkg" in result.source_files[0]
-    assert any(name == "2024Census.pdf" for name in result.source_files)
+    with pytest.raises(HTTPException) as raised:
+        process_uploads(uploads, auto_order=True, extra_warnings=warnings)
+    assert raised.value.status_code == 400
+    assert "HCE Key Report" in raised.value.detail
+    assert "Mutual of America stamp" in raised.value.detail

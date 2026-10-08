@@ -2,6 +2,7 @@ from pathlib import Path
 
 import fitz
 import pytest
+from fastapi import HTTPException
 
 from services.orchestrator import process_uploads
 from services.pdf_extractor import extract_plan_profile
@@ -100,6 +101,7 @@ def test_assemble_split_current_fail_named_file(tmp_path, monkeypatch):
 
     monkeypatch.setattr(save_service, "OUTPUT_DIR", tmp_path)
     uploads = [(path.name, path.read_bytes()) for path in files]
-    result = process_uploads(uploads)
-    assert result.filename == "222222_2024-Valuation.pdf"
-    assert result.plan_profile.source_page_count >= 16
+    with pytest.raises(HTTPException) as raised:
+        process_uploads(uploads)
+    assert raised.value.status_code == 400
+    assert "Assembly stopped" in raised.value.detail
