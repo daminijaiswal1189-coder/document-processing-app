@@ -12,6 +12,7 @@ from services.source_rewrite import (
 def test_hce_max_follows_prior_year_table():
     assert hce_max_percent(1.5) == 3
     assert hce_max_percent(2) == 4
+    assert hce_max_percent(2.21) == 4.21
     assert hce_max_percent(5) == 7
     assert hce_max_percent(8) == 10
     assert hce_max_percent(9) == 11.25

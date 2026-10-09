@@ -37,6 +37,7 @@ class PlanProfile(BaseModel):
     fail_402g_after_deadline: bool | None = None
     fail_415: bool | None = None
     variance_report: bool | None = None
+    true_up: bool | None = None
     contributions_required: bool | None = None
     partially_vested: bool | None = None
     safe_harbor: bool | None = None

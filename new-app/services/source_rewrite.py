@@ -13,7 +13,7 @@ import fitz
 
 from models.plan_profile import PlanProfile
 from services.change_marks import add_mark
-from services.package_polish import cover_date_text
+from services.package_polish import cover_date_text, hce_max_percent
 from services.pdf_modifier import _base_font, _rgb
 
 _MONTH = (
@@ -24,15 +24,6 @@ _COVER_SLASH = re.compile(r"\b(\d{1,2})/0([1-9])/(20\d{2})\b")
 _LETTER_DATE = re.compile(rf"({_MONTH})\s+(\d{{1,2}}),\s+(20\d{{2}})", re.I)
 _PERCENT = re.compile(r"(\d{1,2}(?:\.\d+)?)\s*%")
 _NHCE = re.compile(r"NHCE[^%\n]{0,80}?(\d{1,2}(?:\.\d+)?)\s*%", re.I)
-
-
-def hce_max_percent(nhce: float) -> float:
-    """Prior-year HCE maximum from the NHCE actual deferral percentage."""
-    if nhce < 2:
-        return round(nhce * 2, 2)
-    if nhce < 8:
-        return round(nhce + 2, 2)
-    return round(nhce * 1.25, 2)
 
 
 def calendar_402g_year(plan_year_end: str | None) -> int | None:

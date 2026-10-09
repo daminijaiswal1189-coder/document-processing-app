@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 import uuid
 from datetime import datetime, timezone
 
@@ -44,6 +45,7 @@ def process_uploads(
     Action Required paragraphs → bookmarks → save named PDF.
     """
     job_id = uuid.uuid4().hex[:12]
+    started = time.perf_counter()
     warnings = list(extra_warnings or [])
     highlights: list[dict] = []
     pdfs, excels = _split_uploads(uploads)
@@ -82,6 +84,8 @@ def process_uploads(
             if parsed.get("adp_failed") is not None or parsed.get("fail_402g") is not None:
                 overlays.append(parsed)
         profile = source_profile.merge_overlays(profile, overlays, warnings)
+        if package_polish.has_variance_client_copy([name for name, _data in ordered], doc):
+            profile.contributions_required = True
         profile = plan_profile_service.finalize_profile(profile)
         review = review_service.validate(profile, doc=doc)
         decisions = rules_engine.evaluate(profile)
@@ -131,6 +135,7 @@ def process_uploads(
             warnings.append(f"Also saved to {saved_copy}")
         eml = outlook_service.write_draft(path.parent / f"{path.stem}.eml", profile, path.name)
         email_path = str(eml)
+        elapsed_seconds = time.perf_counter() - started
         log_file = str(
             assembly_log.append_row(
                 save_service.OUTPUT_DIR / "ValAssemblyLog.xlsx",
@@ -138,6 +143,8 @@ def process_uploads(
                 path.name,
                 job_id,
                 doc=doc,
+                finished_at=datetime.now(),
+                elapsed_seconds=elapsed_seconds,
             )
         )
         subject = outlook_service.email_subject(profile)
@@ -179,6 +186,7 @@ def process_uploads(
         email_path=email_path,
         log_path=log_file,
         saved_copy_path=saved_copy,
+        elapsed_seconds=round(elapsed_seconds, 1),
     )
 
 

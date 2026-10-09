@@ -220,6 +220,21 @@
     .check { font-size: 0.75rem; font-weight: 500; }
     .check input { width: auto; margin-right: 4px; }
     #status { color: var(--muted); font-size: 0.75rem; }
+    @keyframes time-blink {
+      0%, 45% { background: #1d4ed8; color: #fff; }
+      55%, 100% { background: #dbeafe; color: #1e3a8a; }
+    }
+    .time-blink {
+      display: inline-block;
+      animation: time-blink 0.9s step-start infinite;
+      font-weight: 800;
+      padding: 3px 8px;
+      border-radius: 6px;
+    }
+    #status.time-blink { font-size: 0.85rem; }
+    @media (prefers-reduced-motion: reduce) {
+      .time-blink { animation: none; background: #1d4ed8; color: #fff; }
+    }
     #error { color: var(--fail); font-size: 0.75rem; white-space: pre-line; }
     .workspace {
       flex: 1 1 auto;
@@ -320,6 +335,11 @@
       color: var(--muted);
       font-size: 0.75rem;
     }
+    #build-time {
+      margin: 8px 0 0;
+      font-size: 0.95rem;
+    }
+    #build-time:empty { display: none; }
     .outcome {
       display: flex;
       flex-wrap: wrap;
@@ -544,6 +564,7 @@
               <h2>Result summary</h2>
               <p id="filename"></p>
               <p id="plan-line"></p>
+              <p id="build-time" class="time-blink"></p>
             </div>
             <div class="outcome" id="outcome"></div>
           </div>
@@ -743,7 +764,7 @@
 
     async function inspectAndAdd(incoming) {
       errorEl.textContent = "";
-      statusEl.textContent = "Adding " + incoming.length + " file(s)…";
+      setStatus("Adding " + incoming.length + " file(s)…");
       incoming.forEach((file) => {
         if (files.some((item) => item.name === file.name && item.file)) return;
         files.push({ name: file.name, size: file.size, file: file, label: file.name, rank: 1000 });
@@ -779,15 +800,15 @@
         retitleCoverRows();
         renderFiles();
         const extraPages = (metas || []).filter((item) => item.split);
-        statusEl.textContent = extraPages.length
+        setStatus(extraPages.length
           ? extraPages.map((item) => (item.label || item.name) + " listed as " + item.pages + " page(s).").join(" ")
-          : "Listed " + files.length + " file(s).";
+          : "Listed " + files.length + " file(s).");
       } catch (err) {
         const raw = err.message || String(err);
         errorEl.textContent = raw === "Failed to fetch"
           ? "Cannot reach the API. Keep python main.py running and open http://127.0.0.1:8002."
           : raw;
-        statusEl.textContent = "Listed " + files.length + " file(s).";
+        setStatus("Listed " + files.length + " file(s).");
       }
     }
 
@@ -806,7 +827,7 @@
         errorEl.textContent = "Enter a folder path first.";
         return;
       }
-      statusEl.textContent = "Loading files from path…";
+      setStatus("Loading files from path…");
       try {
         const response = await fetch(apiBase() + "/api/folder?" + new URLSearchParams({ path: sourcePath }));
         const text = await response.text();
@@ -830,15 +851,15 @@
         retitleCoverRows();
         renderFiles();
         const skipped = (payload.warnings || []).join(" ");
-        statusEl.textContent = "Listed " + listed.length + " file(s). Use Up/Down/Remove, then Process package."
-          + (skipped ? " " + skipped : "");
+        setStatus("Listed " + listed.length + " file(s). Use Up/Down/Remove, then Process package."
+          + (skipped ? " " + skipped : ""));
       } catch (err) {
         listedPath = "";
         const raw = err.message || String(err);
         errorEl.textContent = raw === "Failed to fetch"
           ? "Cannot reach the API. Keep python main.py running and open http://127.0.0.1:8002."
           : raw;
-        statusEl.textContent = "";
+        setStatus("");
       }
     }
 
@@ -955,7 +976,11 @@
         }
       });
       runBtn.disabled = true;
-      statusEl.textContent = "Processing…";
+      const processStarted = Date.now();
+      const processTimer = setInterval(() => {
+        showElapsed("Processing… ", (Date.now() - processStarted) / 1000);
+      }, 1000);
+      showElapsed("Processing… ", 0);
       hidePreview();
       results.classList.remove("open");
       try {
@@ -971,14 +996,15 @@
           throw new Error(formatDetail(payload.detail) || response.statusText);
         }
         showResults(payload);
-        statusEl.textContent = "Done.";
+        showElapsed("Done. Time to process: ", payload.elapsed_seconds == null ? (Date.now() - processStarted) / 1000 : payload.elapsed_seconds);
       } catch (err) {
         const raw = err.message || String(err);
         errorEl.textContent = raw === "Failed to fetch"
           ? "Cannot reach the API. Keep python main.py running and open http://127.0.0.1:8002."
           : raw;
-        statusEl.textContent = "";
+        showElapsed("Stopped after ", (Date.now() - processStarted) / 1000, ".");
       } finally {
+        clearInterval(processTimer);
         runBtn.disabled = false;
       }
     });
@@ -1055,6 +1081,10 @@
       const profile = job.plan_profile || {};
       const planBits = [profile.plan_name, profile.company_name].filter(Boolean);
       document.getElementById("plan-line").textContent = planBits.join(" · ");
+      const buildTime = document.getElementById("build-time");
+      buildTime.textContent = job.elapsed_seconds == null
+        ? ""
+        : "Time to process: " + elapsedLabel(job.elapsed_seconds);
       const names = job.source_files || [];
       document.getElementById("source-order").innerHTML = names.length
         ? names.map((name) => `<li>${escapeHtml(name)}</li>`).join("")
@@ -1115,6 +1145,24 @@
       document.getElementById("tab-warnings").innerHTML = warnings.length
         ? warnings.map((w) => `<li>${escapeHtml(w)}</li>`).join("")
         : "<li>None</li>";
+    }
+
+    function setStatus(text) {
+      statusEl.classList.remove("time-blink");
+      statusEl.textContent = text;
+    }
+
+    function showElapsed(prefix, seconds, suffix) {
+      statusEl.classList.add("time-blink");
+      statusEl.textContent = prefix + elapsedLabel(seconds) + (suffix || "");
+    }
+
+    function elapsedLabel(seconds) {
+      const total = Math.max(0, Math.round(Number(seconds) || 0));
+      const minutes = Math.floor(total / 60);
+      const secs = total % 60;
+      if (minutes) return minutes + " min " + secs + " sec";
+      return secs + " sec";
     }
 
     function yn(value) {

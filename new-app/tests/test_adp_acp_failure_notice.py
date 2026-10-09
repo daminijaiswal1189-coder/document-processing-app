@@ -93,6 +93,58 @@ def test_current_acp_only_removes_adp_qnec_sentence(tmp_path, monkeypatch):
     assert "The ADP QNEC is" not in text
 
 
+def test_single_adp_qnec_sentence_fills_the_notice(tmp_path, monkeypatch):
+    doc = build_adp_acp_failure_notice_pdf(
+        acp="Pass",
+        adp_qnec=None,
+        acp_qnec=None,
+        correction_note=(
+            "This plan will also qualify with a $98,861.35 QNEC contribution "
+            "to the NHCEs for the ADP test."
+        ),
+    )
+    result = _process(tmp_path, monkeypatch, doc)
+    assert result.plan_profile.adp_qnec == 98861.35
+    assert result.plan_profile.acp_qnec is None
+    assert result.plan_profile.total_qnec == 98861.35
+    text = _pdf_text(result.pdf_path)
+    assert "ADP/ACP test is $98,861.35" in text
+    assert "The ADP QNEC is $98,861.35" in text
+    assert "The ACP QNEC is" not in text
+
+
+def test_single_acp_qnec_sentence_is_read():
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_textbox(
+        fitz.Rect(54, 54, 558, 738),
+        "This plan will also qualify with a $12,500.00 QNEC contribution to the NHCEs for the ACP test.",
+        fontsize=11,
+        fontname="helv",
+    )
+    try:
+        profile = extract_plan_profile(doc)
+    finally:
+        doc.close()
+    assert profile.acp_qnec == 12500.0
+    assert profile.adp_qnec is None
+
+
+def test_current_method_wording_is_removed_for_prior(tmp_path, monkeypatch):
+    notice = FAILURE_NOTICE.replace("For current-method testing:", "Current method testing:")
+    doc = build_adp_acp_failure_notice_pdf(method="PRIOR", notice=notice)
+    result = _process(tmp_path, monkeypatch, doc)
+    assert result.plan_profile.testing_method == "PRIOR"
+    saved = fitz.open(result.pdf_path)
+    try:
+        text = "\n".join(page.get_text("text") or "" for page in saved)
+        assert "Failed Compliance Testing" not in text
+        assert "Excess Return Notice" not in text
+        assert "Current method testing" not in text
+    finally:
+        saved.close()
+
+
 def test_prior_method_removes_current_failure_notice(tmp_path, monkeypatch):
     doc = build_adp_acp_failure_notice_pdf(method="PRIOR")
     result = _process(tmp_path, monkeypatch, doc)

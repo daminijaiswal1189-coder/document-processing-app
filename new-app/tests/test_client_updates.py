@@ -182,6 +182,42 @@ def test_assembly_log_follows_the_client_columns(tmp_path):
     assert "0.00 variance" in sheet["E4"].comment.text
 
 
+def test_log_records_sent_date_and_build_time(tmp_path):
+    from datetime import datetime
+
+    from openpyxl import load_workbook
+
+    from services.assembly_log import append_row
+
+    path = tmp_path / "ValAssemblyLog.xlsx"
+    append_row(
+        path,
+        PlanProfile(plan_number="100000", plan_name="Example Plan"),
+        "file.pdf",
+        "job",
+        finished_at=datetime(2026, 10, 9, 17, 32),
+        elapsed_seconds=12.4,
+    )
+    append_row(
+        path,
+        PlanProfile(plan_number="200000", plan_name="Second Plan"),
+        "file.pdf",
+        "job2",
+        finished_at=datetime(2026, 10, 9, 17, 40),
+        elapsed_seconds=75,
+    )
+    book = load_workbook(path)
+    sheet = book.active
+    assert sheet.cell(1, 21).value == "Does this plan use New Comp"
+    assert sheet.cell(1, 22).value == "Date sent back to tester"
+    assert sheet.cell(1, 23).value == "Time to build"
+    assert sheet.cell(3, 22).value == "10/9/2026 5:32 PM"
+    assert sheet.cell(3, 23).value == "12 sec"
+    assert sheet.cell(4, 22).value == "10/9/2026 5:40 PM"
+    assert sheet.cell(4, 23).value == "1 min 15 sec"
+    assert sheet.cell(3, 21).value in (None, "")
+
+
 def test_excel_include_contributions_and_prior_year():
     book = Workbook()
     sheet = book.active
@@ -197,6 +233,7 @@ def test_excel_include_contributions_and_prior_year():
     overlay = parse_excel(buffer.getvalue())
     assert overlay["testing_method"] == "PRIOR"
     assert overlay["contributions_required"] is True
+    assert overlay["true_up"] is True
 
 
 def test_result_summary_flags_top_heavy_mismatch():
@@ -218,6 +255,37 @@ def test_result_summary_flags_top_heavy_mismatch():
     assert items["top_heavy_summary"].passed is False
     assert "55" in items["top_heavy_summary"].detail
     assert items["summary_402(g)"].passed is False
+
+
+def test_excess_notice_accepts_written_plan_year():
+    doc = fitz.open()
+    doc.new_page().insert_text((72, 72), "Cover Letter\nMutual of America", fontsize=11)
+    doc.new_page().insert_text(
+        (72, 72),
+        "Annual Valuation Report\n"
+        "January 1, 2025 - December 31, 2025\n"
+        "FAMILY HEALTH NETWORK OF CENTRAL NEW YORK INC. 401K PS PLAN\n"
+        "801239\n"
+        "Failed Compliance Testing - After 12-months\n"
+        "Excess Return Notice\n"
+        "Current method testing",
+        fontsize=11,
+    )
+    try:
+        items = {
+            item.code: item
+            for item in package_checks(
+                doc,
+                PlanProfile(
+                    plan_number="801239",
+                    plan_name="FAMILY HEALTH NETWORK OF CENTRAL NEW YORK INC. 401K PS PLAN",
+                    plan_year_end="12/31/2025",
+                ),
+            )
+        }
+    finally:
+        doc.close()
+    assert items["report_identity"].passed is True
 
 
 def test_variance_page_flags_zero_format_and_name_order():

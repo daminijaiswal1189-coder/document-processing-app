@@ -53,6 +53,97 @@ def test_restack_moves_kept_text_up_and_keeps_color():
     doc.close()
 
 
+def test_shared_adp_acp_heading_removes_only_the_prior_block():
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_text((54, 80), "IMMEDIATE ACTION REQUIRED - ADP/ACP TEST FAILURE", fontsize=11)
+    page.insert_text((54, 100), "Contribution refunds are required. Review the Correction Method summary.", fontsize=11)
+    page.insert_text((54, 180), "IMMEDIATE ACTION REQUIRED - ADP/ACP TEST FAILURE", fontsize=11)
+    page.insert_text((54, 200), "Refunds are required unless QNEC contributions will be made.", fontsize=11)
+    page.insert_text((54, 280), "NO IMMEDIATE ACTION IS REQUIRED AT THIS TIME", fontsize=11)
+    apply_decisions(doc, _decisions(("B", "remove"), ("C", "keep"), ("G", "keep")))
+    text = doc[0].get_text("text") or ""
+    assert "Review the Correction Method summary" not in text
+    assert "unless QNEC contributions will be made" in text
+    assert "NO IMMEDIATE ACTION IS REQUIRED AT THIS TIME" in text
+    doc.close()
+
+
+def test_after_12_month_headings_are_removed():
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_text(
+        (54, 80),
+        "IMMEDIATE ACTION REQUIRED - ADP/ACP PRIOR METHOD TEST FAILURE - AFTER 12-MONTHS",
+        fontsize=9,
+    )
+    page.insert_text((54, 110), "Prior method after 12 months stays only when that rule matches.", fontsize=10)
+    page.insert_text(
+        (54, 160),
+        "IMMEDIATE ACTION REQUIRED - ADP/ACP CURRENT METHOD TEST FAILURE - AFTER 12-MONTHS",
+        fontsize=9,
+    )
+    page.insert_text((54, 190), "Current method after 12 months.", fontsize=10)
+    page.insert_text((54, 240), "NO IMMEDIATE ACTION IS REQUIRED AT THIS TIME", fontsize=11)
+    apply_decisions(doc, _decisions(("D", "remove"), ("E", "remove"), ("G", "keep")))
+    text = doc[0].get_text("text") or ""
+    assert "AFTER 12-MONTHS" not in text
+    assert "NO IMMEDIATE ACTION IS REQUIRED AT THIS TIME" in text
+    doc.close()
+
+
+def test_variance_client_copy_keeps_contributions_paragraph(tmp_path, monkeypatch):
+    import services.save_service as save_service
+    from services.orchestrator import process_uploads
+    from services.package_polish import has_variance_client_copy
+
+    variance = fitz.open()
+    variance_page = variance.new_page()
+    variance_page.insert_text((72, 72), "Variance Report\nPlan Number 111111\nSample Plan", fontsize=11)
+    empty = fitz.open()
+    empty.new_page()
+    try:
+        assert has_variance_client_copy(["2025MaVar.pdf"], empty)
+        assert has_variance_client_copy(["cover.pdf"], variance)
+        assert not has_variance_client_copy(["cover.pdf"], empty)
+    finally:
+        empty.close()
+
+    monkeypatch.setattr(save_service, "OUTPUT_DIR", tmp_path)
+    cover = fitz.open()
+    cover_page = cover.new_page()
+    cover_page.insert_text(
+        (54, 72),
+        "Cover Letter\nMarch 8, 2026\nMichigan United Credit Union\n"
+        "RE: Michigan United Credit Union 401(k) Savings Plan\n"
+        "We are pleased to provide you with our completed administrative review of your\n"
+        "qualified retirement plan for the period ending 12/31/2025.\n"
+        "Plan Number: 900062\n\n"
+        "IMMEDIATE ACTION REQUIRED - CONTRIBUTIONS\n"
+        "A Contribution and/or adjustment is required.\n",
+        fontsize=11,
+    )
+    try:
+        result = process_uploads(
+            [
+                ("01_cover.pdf", cover.tobytes()),
+                ("2025MaVar.pdf", variance.tobytes()),
+            ]
+        )
+    finally:
+        cover.close()
+        variance.close()
+    by_id = {item.rule_id: item for item in result.rule_decisions}
+    assert result.plan_profile.contributions_required is True
+    assert by_id["M"].action == "keep"
+    saved = fitz.open(result.pdf_path)
+    try:
+        text = "\n".join(page.get_text("text") or "" for page in saved)
+        assert "A Contribution and/or adjustment is required" in text
+    finally:
+        saved.close()
+
+
 def test_restack_leaves_header_image_in_place():
     doc = fitz.open()
     page = doc.new_page()

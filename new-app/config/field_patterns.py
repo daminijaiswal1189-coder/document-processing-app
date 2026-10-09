@@ -44,9 +44,11 @@ TEST_PATTERNS: dict[str, list[str]] = {
     ],
     "adp_qnec": [
         r"ADP\s*QNEC\s*[:#]?\s*\$?\s*([\d,]+(?:\.\d{2})?)",
+        r"\$\s*([\d,]+(?:\.\d{2})?)\s+QNEC\s+contribution\s+to\s+the\s+NHCE'?s?\s+for\s+the\s+ADP\s+test",
     ],
     "acp_qnec": [
         r"ACP\s*QNEC\s*[:#]?\s*\$?\s*([\d,]+(?:\.\d{2})?)",
+        r"\$\s*([\d,]+(?:\.\d{2})?)\s+QNEC\s+contribution\s+to\s+the\s+NHCE'?s?\s+for\s+the\s+ACP\s+test",
     ],
     "deferral_refund": [
         r"Deferral\s*Refund\s*[:#]?\s*\$?\s*([\d,]+(?:\.\d{2})?)",

@@ -69,9 +69,36 @@ _PASS_FAIL = (
 )
 
 
+def hce_max_percent(nhce: float) -> float:
+    """Prior-year HCE maximum from the NHCE actual deferral percentage."""
+    if nhce < 2:
+        return round(nhce * 2, 2)
+    if nhce < 8:
+        return round(nhce + 2, 2)
+    return round(nhce * 1.25, 2)
+
+
 def cover_date_text(when: datetime | None = None) -> str:
     when = when or datetime.now()
     return f"{_MONTHS[when.month - 1]} {when.day}, {when.year}"
+
+
+_VARIANCE_SECTIONS = {"Variance", "PS Variance", "SHNE Variance"}
+
+
+def has_variance_client_copy(filenames: list[str], doc: fitz.Document) -> bool:
+    """A variance client copy in the folder keeps the contributions paragraph."""
+    for name in filenames:
+        spec = matched_spec(name)
+        if spec and spec.get("name") in _VARIANCE_SECTIONS:
+            return True
+    for page in doc:
+        text = page.get_text("text") or ""
+        if re.search(r"action required", text, re.I):
+            continue
+        if re.search(r"(?<!no )variance report|\bps\s*variance\b|\bshne\s*variance\b", text, re.I):
+            return True
+    return False
 
 
 def exclude_brf_uploads(
@@ -479,6 +506,20 @@ def _cut_off(page: fitz.Page) -> bool:
     return False
 
 
+def _plan_year_present(text: str, plan_year_end: str) -> bool:
+    """Accept 12/31/2025 and the notice header 'December 31, 2025'."""
+    if plan_year_end in text:
+        return True
+    match = re.fullmatch(r"(\d{1,2})/(\d{1,2})/(\d{4})", plan_year_end.strip())
+    if not match:
+        return False
+    month = int(match.group(1))
+    if not 1 <= month <= 12:
+        return False
+    written = f"{_MONTHS[month - 1]} {int(match.group(2))}, {match.group(3)}"
+    return written.lower() in text.lower()
+
+
 def _identity_checks(doc: fitz.Document, profile: PlanProfile) -> list[ValidationItem]:
     if not profile.plan_number and not profile.plan_name:
         return [
@@ -512,7 +553,7 @@ def _identity_checks(doc: fitz.Document, profile: PlanProfile) -> list[Validatio
             gaps.append("plan number")
         if profile.plan_name and profile.plan_name.lower() not in text.lower():
             gaps.append("plan name")
-        if is_excess and profile.plan_year_end and profile.plan_year_end not in text:
+        if is_excess and profile.plan_year_end and not _plan_year_present(text, profile.plan_year_end):
             gaps.append("plan year end")
         if gaps:
             missing.append(f"page {page.number + 1} missing " + ", ".join(gaps))

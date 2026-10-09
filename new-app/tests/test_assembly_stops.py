@@ -82,6 +82,7 @@ def _excel(plan_name: str) -> bytes:
 def test_complete_valuation_package_still_saves(tmp_path, monkeypatch):
     result = _run(tmp_path, monkeypatch, [("100000 2024 401k Valuation Pkg.pdf", _package())])
     assert result.filename == "100000_2024-Valuation.pdf"
+    assert result.elapsed_seconds is not None and result.elapsed_seconds >= 0
     assert result.email_path
     assert result.log_path
 
@@ -139,6 +140,39 @@ def test_incomplete_address_stops(tmp_path, monkeypatch):
             [("100000 2024 401k Valuation Pkg.pdf", _package(address="New York"))],
         )
     assert "employer address" in raised.value.detail.lower()
+
+
+def test_true_up_requires_the_client_variance_report(tmp_path, monkeypatch):
+    book = Workbook()
+    sheet = book.active
+    sheet["A1"] = "Plan Number"
+    sheet["B1"] = "Plan Name"
+    sheet["A2"] = "100000"
+    sheet["B2"] = "Example Plan"
+    sheet["A12"] = "Annual allocation (per document including true up)? (yes / no)"
+    sheet["B12"] = "Yes"
+    buffer = io.BytesIO()
+    book.save(buffer)
+    excel = buffer.getvalue()
+    with pytest.raises(HTTPException) as raised:
+        _run(
+            tmp_path,
+            monkeypatch,
+            [
+                ("100000 2024 401k Valuation Pkg.pdf", _package()),
+                ("val-package.xlsx", excel),
+            ],
+        )
+    assert "Variance Client Copy" in raised.value.detail
+    result = _run(
+        tmp_path,
+        monkeypatch,
+        [
+            ("100000 2024 401k Valuation Pkg.pdf", _package("Variance Report\nPlan Name: Example Plan")),
+            ("val-package.xlsx", excel),
+        ],
+    )
+    assert result.plan_profile.true_up is True
 
 
 def test_excel_plan_name_must_match_the_reports(tmp_path, monkeypatch):

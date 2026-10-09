@@ -84,6 +84,7 @@ def parse_excel(data: bytes) -> dict[str, Any]:
         overlay["contributions_required"] = True
     if _yes_no(_first(cells, "annual allocation", "true up", "true-up")) is True:
         overlay["contributions_required"] = True
+        overlay["true_up"] = True
     if re.search(r"safe harbor|\bSH\b", notes, re.I):
         overlay["safe_harbor"] = True
     if re.search(r"catch-?up.{0,40}not allowed", notes, re.I):

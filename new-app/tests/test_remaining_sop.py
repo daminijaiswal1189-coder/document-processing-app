@@ -127,6 +127,87 @@ def test_recap_prior_keeps_prior_bullet(tmp_path, monkeypatch):
     assert "the actual amount the employee can defer" not in text
 
 
+def test_safe_harbor_bullet_stays_when_it_also_has_the_current_sentence(tmp_path, monkeypatch):
+    import fitz
+
+    doc = fitz.open()
+    doc.new_page().insert_textbox(
+        fitz.Rect(54, 54, 558, 738),
+        "\n".join(
+            [
+                "Cover Letter",
+                "Plan Number: 777777",
+                "Testing Method: CURRENT",
+                "HCE Current Year: Yes",
+                "HCE Future year: Yes",
+                "Safe Harbor: Yes",
+            ]
+        ),
+        fontsize=11,
+        fontname="helv",
+    )
+    doc.new_page().insert_textbox(
+        fitz.Rect(54, 54, 558, 738),
+        "\n".join(
+            [
+                "Important Information",
+                "",
+                "- Note: in addition, the actual amount the employee can defer cannot exceed the annual addition limit.",
+                "- The plan follows the rules and regulations of the Safe Harbor Plan. Note: The actual amount the employee can defer in 2022 is the lesser of $20,500.",
+            ]
+        ),
+        fontsize=11,
+        fontname="helv",
+    )
+    result = _process(tmp_path, monkeypatch, doc)
+    text = _pdf_text(result.pdf_path)
+    assert "Safe Harbor Plan" in text
+    assert "cannot exceed the annual addition limit" not in text
+
+
+def test_prior_recap_bullet_is_filled_from_the_adp_nhce_rate(tmp_path, monkeypatch):
+    import fitz
+
+    doc = fitz.open()
+    doc.new_page().insert_textbox(
+        fitz.Rect(54, 54, 558, 738),
+        "\n".join(
+            [
+                "Cover Letter",
+                "Plan Number: 777777",
+                "Testing Method: PRIOR",
+                "HCE Current Year: Yes",
+                "HCE Future year: No",
+                "Safe Harbor: No",
+            ]
+        ),
+        fontsize=11,
+        fontname="helv",
+    )
+    doc.new_page().insert_textbox(
+        fitz.Rect(54, 54, 558, 738),
+        "Important Information\n\n"
+        "- The maximum average deferral rate for the Highly Compensated Employee(s) for the 2022 plan year "
+        "is % based on the average deferral rate for your Nonhighly Compensated Employees (NHCE) for 2021 of %. "
+        "This rate is determined using the 'prior year data' method. "
+        "Note: the actual amount the employee can defer is the lesser of that rate.",
+        fontsize=11,
+        fontname="helv",
+    )
+    doc.new_page().insert_textbox(
+        fitz.Rect(54, 54, 558, 738),
+        "TEST RESULTS\n"
+        "The ADP for the 65 NHCE(s) is 2.21% (143.65/65). This value will be used in next year's test.",
+        fontsize=11,
+        fontname="helv",
+    )
+    result = _process(tmp_path, monkeypatch, doc)
+    text = _pdf_text(result.pdf_path)
+    assert "is 4.21% based on" in text
+    assert "of 2.21%" in text
+    assert "prior year data" in text
+
+
 def test_recap_safe_harbor_keeps_sh_bullet(tmp_path, monkeypatch):
     doc = build_remaining_sop_pdf(safe_harbor="Yes")
     result = _process(tmp_path, monkeypatch, doc)

@@ -10,6 +10,7 @@ from services.package_builder import (
     SAMPLE_LETTER_415,
     SAMPLE_LETTER_ADP,
     SAMPLE_LETTER_ADP_ACP,
+    _textbox,
     build_sample_letters_pdf,
 )
 from services.pdf_extractor import extract_plan_profile
@@ -149,6 +150,48 @@ def test_only_415_keeps_packet_and_letter(tmp_path, monkeypatch):
     assert "415 annual additions failure" in text
     assert "ADP/ACP excess returns" not in text
     assert "402(g) deferral limit has been exceeded" not in text
+
+
+def test_combined_adp_acp_letter_stays_when_only_adp_fails(tmp_path, monkeypatch):
+    doc = build_sample_letters_pdf(adp="Fail", acp="Pass", include_j_adp=False, include_j_acp=False)
+    _textbox(
+        doc,
+        "SAMPLE/DRAFT Communication to Participant\n"
+        "(To Be Placed on Company Letterhead)\n"
+        "Actual Deferral Percentage (ADP) and/or Actual Contribution Percentage (ACP)",
+    )
+    result = _process(tmp_path, monkeypatch, doc)
+    text = _pdf_text(result.pdf_path)
+    assert "Actual Deferral Percentage (ADP)" in text
+    assert "Actual Contribution Percentage (ACP)" in text
+
+
+def test_combined_adp_acp_letter_stays_when_only_acp_fails(tmp_path, monkeypatch):
+    doc = build_sample_letters_pdf(adp="Pass", acp="Fail", include_j_adp=False, include_j_acp=False)
+    _textbox(
+        doc,
+        "SAMPLE/DRAFT Communication to Participant\n"
+        "(To Be Placed on Company Letterhead)\n"
+        "Actual Deferral Percentage (ADP) and/or Actual Contribution Percentage (ACP)",
+    )
+    result = _process(tmp_path, monkeypatch, doc)
+    text = _pdf_text(result.pdf_path)
+    assert "Actual Deferral Percentage (ADP)" in text
+    assert "Actual Contribution Percentage (ACP)" in text
+
+
+def test_combined_adp_acp_letter_is_removed_when_neither_fails(tmp_path, monkeypatch):
+    doc = build_sample_letters_pdf(adp="Pass", acp="Pass", include_j_adp=False, include_j_acp=False)
+    _textbox(
+        doc,
+        "SAMPLE/DRAFT Communication to Participant\n"
+        "(To Be Placed on Company Letterhead)\n"
+        "Actual Deferral Percentage (ADP) and/or Actual Contribution Percentage (ACP)",
+    )
+    result = _process(tmp_path, monkeypatch, doc)
+    text = _pdf_text(result.pdf_path)
+    assert "Actual Deferral Percentage (ADP)" not in text
+    assert "Actual Contribution Percentage (ACP)" not in text
 
 
 def test_adp_only_keeps_adp_letter_and_drops_acp_letter(tmp_path, monkeypatch):

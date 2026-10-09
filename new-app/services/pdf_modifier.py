@@ -9,6 +9,7 @@ from config.settings import CONFIG_DIR
 from models.plan_profile import PlanProfile
 from models.review import RuleDecision
 from services.change_marks import add_mark
+from services.package_polish import hce_max_percent
 
 _TITLE_ONLY = re.compile(
     r"^(action required|annual valuation report(?:/action required)?)\s*$",
@@ -32,16 +33,16 @@ def apply_decisions(doc: fitz.Document, decisions: list[RuleDecision]) -> list[s
                 continue
             page_text = page.get_text("text") or ""
             extra = str(spec.get("extra") or "")
-            if extra and extra.lower() not in page_text.lower():
+            if not _extra_matches(page_text, extra):
                 continue
             for hit in page.search_for(heading):
-                end_y = page.rect.y1 - 36
-                for other in headings:
-                    if other == heading:
-                        continue
-                    for rect in page.search_for(other):
-                        if rect.y0 > hit.y0 + 8:
-                            end_y = min(end_y, rect.y0 - 4)
+                if _covered_by_longer_heading(page, hit, heading, headings):
+                    continue
+                end_y = _block_end(page, hit.y0, headings)
+                if not _block_matches(page, spec, hit.y0, end_y):
+                    continue
+                if _kept_by_other_spec(page, page_text, specs, heading, hit.y0, end_y, remove_ids):
+                    continue
                 boxes.append(fitz.Rect(40, max(36, hit.y0 - 2), page.rect.x1 - 40, end_y))
                 if rule_id not in removed:
                     removed.append(rule_id)
@@ -54,6 +55,85 @@ def apply_decisions(doc: fitz.Document, decisions: list[RuleDecision]) -> list[s
         _restack_pages(doc, touched)
         _drop_empty_pages(doc)
     return removed
+
+
+def _extra_matches(page_text: str, extra: str) -> bool:
+    """'For current-method testing' also matches the notice line 'Current method testing:'."""
+    if not extra:
+        return True
+    def fold(value: str) -> str:
+        return re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()
+    haystack = fold(page_text)
+    needle = fold(extra)
+    if needle in haystack:
+        return True
+    if needle.startswith("for "):
+        return needle[4:] in haystack
+    return False
+
+
+def _covered_by_longer_heading(page: fitz.Page, hit, heading: str, headings: list[str]) -> bool:
+    """'Failed Compliance Testing' is the start of the after-12-month heading."""
+    for other in headings:
+        if not other.startswith(heading) or len(other) <= len(heading):
+            continue
+        for rect in page.search_for(other):
+            if abs(rect.y0 - hit.y0) <= 2 and abs(rect.x0 - hit.x0) <= 2:
+                return True
+    return False
+
+
+def _block_end(page: fitz.Page, y0: float, headings: list[str]) -> float:
+    """Stop at the next heading, including another copy of this same heading."""
+    end_y = page.rect.y1 - 36
+    seen: set[str] = set()
+    for heading in headings:
+        if not heading or heading in seen:
+            continue
+        seen.add(heading)
+        for rect in page.search_for(heading):
+            if rect.y0 > y0 + 8:
+                end_y = min(end_y, rect.y0 - 4)
+    return end_y
+
+
+def _kept_by_other_spec(
+    page: fitz.Page,
+    page_text: str,
+    specs: list[dict],
+    heading: str,
+    y0: float,
+    y1: float,
+    remove_ids: set[str],
+) -> bool:
+    """A combined ADP/ACP letter stays when either test still needs it."""
+    for spec in specs:
+        if str(spec.get("heading") or "") != heading:
+            continue
+        if str(spec["id"]) in remove_ids:
+            continue
+        if not _extra_matches(page_text, str(spec.get("extra") or "")):
+            continue
+        if _block_matches(page, spec, y0, y1):
+            return True
+    return False
+
+
+def _block_matches(page: fitz.Page, spec: dict, y0: float, y1: float) -> bool:
+    """Prior and Current share one heading. The Current block says 'unless QNEC'."""
+    contains = str(spec.get("block_contains") or "").lower()
+    excludes = str(spec.get("block_excludes") or "").lower()
+    if not contains and not excludes:
+        return True
+    words = page.get_text("words") or []
+    text = " ".join(
+        word[4] for word in words if word[1] >= y0 - 1 and word[3] <= y1 + 1
+    ).lower()
+    if contains and contains not in text:
+        return False
+    if excludes and excludes in text:
+        return False
+    return True
 
 
 def _restack_pages(doc: fitz.Document, touched: set[int]) -> None:
@@ -277,12 +357,19 @@ def _block_specs() -> list[dict]:
     return specs
 
 
+_ADP_NHCE = re.compile(
+    r"ADP\s+for\s+the\s+\d+\s+NHCE\(?s\)?\s+is\s+(\d+(?:\.\d+)?)\s*%",
+    re.I,
+)
+
+
 def apply_recap_bullets(doc: fitz.Document, decisions: list[RuleDecision]) -> list[str]:
     """TEST23 §I: drop unused Important Information bullets and pack the page."""
     specs = _recap_specs()
     if not specs:
         return []
     remove_ids = {item.rule_id for item in decisions if item.action == "remove"}
+    nhce = _adp_nhce_percent(doc)
     removed: list[str] = []
     for page in doc:
         original = page.get_text("text") or ""
@@ -296,6 +383,8 @@ def apply_recap_bullets(doc: fitz.Document, decisions: list[RuleDecision]) -> li
                 if spec["id"] not in removed:
                     removed.append(str(spec["id"]))
                 continue
+            if spec and str(spec["id"]) == "Y2":
+                bullet = _fill_prior_rates(bullet, nhce)
             kept.append(bullet)
         updated = header.strip()
         if kept:
@@ -315,11 +404,56 @@ def _recap_specs() -> list[dict]:
 
 def _matching_recap(bullet: str, specs: list[dict]) -> dict | None:
     text = bullet.lower()
-    for spec in specs:
-        match = str(spec.get("match") or "").lower()
-        if match and match in text:
-            return spec
+    hits = [
+        spec
+        for spec in specs
+        if (match := str(spec.get("match") or "").lower()) and match in text
+    ]
+    if not hits:
+        return None
+    # The safe-harbor and prior bullets also contain the current-testing sentence.
+    specific = [spec for spec in hits if str(spec["id"]) != "Y3"]
+    if specific and any(str(spec["id"]) == "Y3" for spec in hits):
+        return specific[0]
+    return hits[0]
+
+
+def _adp_nhce_percent(doc: fitz.Document) -> float | None:
+    for page in doc:
+        match = _ADP_NHCE.search(page.get_text("text") or "")
+        if match:
+            return float(match.group(1))
     return None
+
+
+def _fill_prior_rates(bullet: str, nhce: float | None) -> str:
+    """Write the NHCE rate and the HCE maximum into the prior-year recap bullet."""
+    if nhce is None:
+        return bullet
+    hce_label = _percent_label(hce_max_percent(nhce))
+    nhce_label = _percent_label(nhce)
+    updated = re.sub(
+        r"(\bis\s+)(?:\d+(?:\.\d+)?\s*)?%\s*(based on\b)",
+        rf"\g<1>{hce_label} \g<2>",
+        bullet,
+        count=1,
+        flags=re.I,
+    )
+    updated = re.sub(
+        r"(\bof\s+)(?:\d+(?:\.\d+)?\s*)?%",
+        rf"\g<1>{nhce_label}",
+        updated,
+        count=1,
+        flags=re.I,
+    )
+    return updated
+
+
+def _percent_label(value: float) -> str:
+    rounded = round(float(value), 2)
+    if rounded == int(rounded):
+        return f"{int(rounded)}%"
+    return f"{rounded:.2f}".rstrip("0").rstrip(".") + "%"
 
 
 def _split_recap(text: str) -> tuple[str, list[str]]:

@@ -9,21 +9,30 @@ action_required_headings:
       - Excess Summary
       - Form W-4P
   - id: B
-    heading: IMMEDIATE ACTION REQUIRED - ACP TEST FAILURE
+    heading: IMMEDIATE ACTION REQUIRED - ADP/ACP TEST FAILURE
     variant: PRIOR
+    block_excludes: unless QNEC
     must_include:
       - Contribution refunds to participants are required to correct ADP/ACP testing failures
       - Excess Summary
       - Form W-4P
+  - id: B
+    heading: IMMEDIATE ACTION REQUIRED - ACP TEST FAILURE
+    variant: PRIOR
   - id: C
     heading: IMMEDIATE ACTION REQUIRED - ADP/ACP TEST FAILURE
     variant: CURRENT
+    block_contains: unless QNEC
     must_include:
-      - Qualified Non-Elective Contribution
+      - unless QNEC contributions will be made
       - Excess Summary
       - Form W-4P
   - id: D
+    heading: IMMEDIATE ACTION REQUIRED - ADP/ACP CURRENT METHOD TEST FAILURE - AFTER 12-MONTHS
+  - id: D
     heading: IMMEDIATE ACTION REQUIRED - ACP CURRENT METHOD TEST FAILURE - AFTER 12-MONTHS
+  - id: E
+    heading: IMMEDIATE ACTION REQUIRED - ADP/ACP PRIOR METHOD TEST FAILURE - AFTER 12-MONTHS
   - id: E
     heading: IMMEDIATE ACTION REQUIRED - ACP PRIOR METHOD TEST FAILURE - AFTER 12-MONTHS
   - id: F
@@ -62,6 +71,9 @@ sample_letters:
   - id: J_ADP
     heading: SAMPLE/DRAFT Communication to Participant
     extra: Average Deferral Percentage (ADP)
+  - id: J_ADP
+    heading: SAMPLE/DRAFT Communication to Participant
+    extra: Actual Deferral Percentage (ADP)
   - id: K
     heading: 402(g) Deferral Limit
     extra: SAMPLE/DRAFT

@@ -278,7 +278,7 @@ def _missing_report_reasons(
     summary = _summary_text(doc)
     for label, summary_pattern, _file_pattern, _head_pattern in _EXTRA_REPORTS:
         mentioned = bool(summary and re.search(summary_pattern, summary, re.I))
-        if label == "Variance Client Copy" and profile.variance_report is True:
+        if label == "Variance Client Copy" and (profile.variance_report is True or profile.true_up is True):
             mentioned = True
         if mentioned and label not in present:
             missing.append(label)

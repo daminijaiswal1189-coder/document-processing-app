@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 from copy import copy
+from datetime import datetime
 from pathlib import Path
 
 import fitz
@@ -49,12 +50,18 @@ _PERSON = re.compile(r"(?m)^[A-Z][A-Za-z' .-]+,\s+[A-Z]")
 _NONE = re.compile(r"\bno\s+hce\b|there are no hce|0\s+hce", re.I)
 
 
+_SENT_COL = 22
+_BUILD_COL = 23
+
+
 def append_row(
     log_path: Path,
     profile: PlanProfile,
     filename: str,
     job_id: str,
     doc: fitz.Document | None = None,
+    finished_at: datetime | None = None,
+    elapsed_seconds: float | None = None,
 ) -> Path:
     """Append one assembled plan using the logs-updation.xlsx columns."""
     del filename, job_id
@@ -71,7 +78,13 @@ def append_row(
     else:
         book, sheet = _book_from_template()
     values, note = build_log_row(profile, doc)
-    _write_data_row(sheet, _next_data_row(sheet), values, note)
+    row = _next_data_row(sheet)
+    _write_data_row(sheet, row, values, note)
+    _ensure_build_headers(sheet)
+    if finished_at is not None:
+        sheet.cell(row, _SENT_COL).value = _sent_label(finished_at)
+    if elapsed_seconds is not None:
+        sheet.cell(row, _BUILD_COL).value = _elapsed_label(elapsed_seconds)
     if not sheet.data_validations.dataValidation:
         _add_lists(sheet)
     book.save(log_path)
@@ -185,6 +198,26 @@ def build_log_row(profile: PlanProfile, doc: fitz.Document | None = None) -> tup
         "",
     ]
     return values, allocation_note
+
+
+def _ensure_build_headers(sheet) -> None:
+    if not sheet.cell(1, _SENT_COL).value:
+        sheet.cell(1, _SENT_COL).value = "Date sent back to tester"
+    if not sheet.cell(1, _BUILD_COL).value:
+        sheet.cell(1, _BUILD_COL).value = "Time to build"
+
+
+def _sent_label(when: datetime) -> str:
+    clock = when.strftime("%I:%M %p").lstrip("0")
+    return f"{when.month}/{when.day}/{when.year} {clock}"
+
+
+def _elapsed_label(seconds: float) -> str:
+    total = max(0, int(round(seconds)))
+    minutes, secs = divmod(total, 60)
+    if minutes:
+        return f"{minutes} min {secs} sec"
+    return f"{secs} sec"
 
 
 def _write_headers(sheet) -> None:

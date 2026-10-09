@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import textwrap
+
 import fitz
 
 COVER_LINES = [
@@ -29,29 +31,27 @@ PARAGRAPHS: list[tuple[str, str]] = [
         "for each affected participant.",
     ),
     (
-        "IMMEDIATE ACTION REQUIRED - ACP TEST FAILURE",
+        "IMMEDIATE ACTION REQUIRED - ADP/ACP TEST FAILURE",
         "Contribution refunds to participants are required to correct ADP/ACP testing failures. "
-        "Review the Excess Summary report provided in this package for details and return any "
-        "required documents to your local regional office representative.\n"
+        "Review the ADP/ACP Correction Method summary for details.\n"
         "To help ensure returns are processed correctly, please also return Form W-4P documents "
         "for each affected participant.",
     ),
     (
         "IMMEDIATE ACTION REQUIRED - ADP/ACP TEST FAILURE",
-        "Contribution refunds to participants are required to correct ADP/ACP testing failures. "
-        "A Qualified Non-Elective Contribution (QNEC) may also be required. Review the Excess "
-        "Summary report provided in this package for details and return any required documents "
-        "to your local regional office representative.\n"
+        "Contribution refunds to participants are required to correct ADP/ACP testing failures "
+        "unless QNEC contributions will be made. Review the ADP/ACP Correction Method summary "
+        "provided in this package for details.\n"
         "To help ensure returns are processed correctly, please also return Form W-4P documents "
         "for each affected participant.",
     ),
     (
-        "IMMEDIATE ACTION REQUIRED - ACP CURRENT METHOD TEST FAILURE - AFTER 12-MONTHS",
+        "IMMEDIATE ACTION REQUIRED - ADP/ACP CURRENT METHOD TEST FAILURE - AFTER 12-MONTHS",
         "The ADP/ACP test failure is being corrected more than 12 months after the plan year end. "
         "QNEC and refund amounts apply. Review the Excess Summary report in this package.",
     ),
     (
-        "IMMEDIATE ACTION REQUIRED - ACP PRIOR METHOD TEST FAILURE - AFTER 12-MONTHS",
+        "IMMEDIATE ACTION REQUIRED - ADP/ACP PRIOR METHOD TEST FAILURE - AFTER 12-MONTHS",
         "The ADP/ACP test failure is being corrected more than 12 months after the plan year end. "
         "Review the Excess Summary report in this package.",
     ),
@@ -67,15 +67,26 @@ PARAGRAPHS: list[tuple[str, str]] = [
 
 
 def build_valuation_with_action_paragraphs() -> fitz.Document:
-    """Cover on page 1; TEST23 Action Required paragraphs on pages 2-4."""
+    """Cover on page 1; TEST23 Action Required paragraphs on pages 2-4.
+
+    Headings stay on one line so the keep/remove search can find them.
+    """
     doc = fitz.open()
     _textbox(doc, "Cover Letter\n\n" + "\n".join(COVER_LINES))
     groups = [PARAGRAPHS[0:2], PARAGRAPHS[2:4], PARAGRAPHS[4:7]]
     for group in groups:
-        blocks = ["Action Required", ""]
+        page = doc.new_page()
+        y = 72
+        page.insert_text((54, y), "Action Required", fontsize=11, fontname="helv")
+        y += 24
         for heading, body in group:
-            blocks.extend([heading, "", body, ""])
-        _textbox(doc, "\n".join(blocks))
+            page.insert_text((54, y), heading, fontsize=8, fontname="helv")
+            y += 16
+            for paragraph in body.split("\n"):
+                for line in textwrap.wrap(paragraph, width=80) or [""]:
+                    page.insert_text((54, y), line, fontsize=10, fontname="helv")
+                    y += 13
+            y += 14
     return doc
 
 
@@ -107,6 +118,8 @@ def build_adp_acp_failure_notice_pdf(
     adp_qnec: str | None = "142,540.41",
     acp_qnec: str | None = "42,814.34",
     include_notice: bool = True,
+    notice: str | None = None,
+    correction_note: str | None = None,
 ) -> fitz.Document:
     """TEST23 §C: cover + correction page + Excess Return Notice placeholders."""
     doc = fitz.open()
@@ -135,9 +148,11 @@ def build_adp_acp_failure_notice_pdf(
         correction.append(f"ADP QNEC: ${adp_qnec}")
     if acp_qnec is not None:
         correction.append(f"ACP QNEC: ${acp_qnec}")
+    if correction_note:
+        correction.append(correction_note)
     _textbox(doc, "\n".join(correction))
     if include_notice:
-        _textbox(doc, FAILURE_NOTICE)
+        _textbox(doc, FAILURE_NOTICE if notice is None else notice)
     return doc
 
 
