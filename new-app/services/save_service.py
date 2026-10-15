@@ -9,9 +9,11 @@ from models.plan_profile import PlanProfile
 
 
 def valuation_filename(profile: PlanProfile) -> str:
-    """{PlanNumber}_{BeginningPlanYear}-Valuation.pdf (SRD §7)."""
+    """{PlanNumber}_{BeginningPlanYear}-Valuation.pdf, or the mid-year test name."""
     number = (profile.plan_number or "UNKNOWN").strip()
     year = (profile.beginning_plan_year or "UNKNOWN").strip()
+    if profile.midyear:
+        return f"{number}_MidYearTesting_2_{year}_{year}-Mid-Year-ADP-Test.pdf"
     return f"{number}_{year}-Valuation.pdf"
 
 

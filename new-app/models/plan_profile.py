@@ -42,6 +42,13 @@ class PlanProfile(BaseModel):
     partially_vested: bool | None = None
     safe_harbor: bool | None = None
     catchup_disallowed: bool | None = None
+    special_catchup_disallowed: bool | None = None
+    non_governmental: bool | None = None
+    forfeitures_reallocated: bool | None = None
+    no_forfeitures: bool | None = None
+    midyear: bool | None = None
+    midyear_failed: bool | None = None
+    hce_max_deferral: float | None = None
     per_payroll_match: bool | None = None
     rework: bool | None = None
     rush: bool | None = None

@@ -3,13 +3,12 @@ from __future__ import annotations
 import re
 
 import fitz
-import yaml
 
-from config.settings import CONFIG_DIR
 from models.plan_profile import PlanProfile
 from models.review import RuleDecision
 from services.change_marks import add_mark
 from services.package_polish import hce_max_percent
+from services.plan_config import package_flags, paragraphs_for
 
 _TITLE_ONLY = re.compile(
     r"^(action required|annual valuation report(?:/action required)?)\s*$",
@@ -17,9 +16,13 @@ _TITLE_ONLY = re.compile(
 )
 
 
-def apply_decisions(doc: fitz.Document, decisions: list[RuleDecision]) -> list[str]:
+def apply_decisions(
+    doc: fitz.Document,
+    decisions: list[RuleDecision],
+    plan_type: str | None = None,
+) -> list[str]:
     """Remove Action Required blocks, pack leftover text, and drop empty pages."""
-    specs = _block_specs()
+    specs = _block_specs(plan_type)
     remove_ids = {item.rule_id for item in decisions if item.action == "remove"}
     headings = [str(spec["heading"]) for spec in specs if spec.get("heading")]
     removed: list[str] = []
@@ -293,6 +296,18 @@ def fill_qnec_placeholders(
             updated = updated.replace("ADP/ACP test is $X,XXX,XXX.XX", f"ADP/ACP test is {money}")
             filled.append(f"total={money}")
             placed.append(money)
+        if package_flags(profile.plan_type).get("acp_notice_amount"):
+            if profile.acp_qnec is not None:
+                acp_money = _money(profile.acp_qnec)
+                updated = updated.replace("ACP test is $X,XXX,XXX.XX", f"ACP test is {acp_money}")
+                filled.append(f"acp-notice={acp_money}")
+                placed.append(acp_money)
+            else:
+                updated = re.sub(
+                    r"(?<!ADP/)ACP test is \$X,XXX,XXX\.XX\.?\s*",
+                    "",
+                    updated,
+                )
         if profile.adp_qnec is not None:
             updated = updated.replace(
                 "The ADP QNEC is $X,XXX,XXX.XX",
@@ -347,8 +362,8 @@ def _money(value: float) -> str:
     return f"${value:,.2f}"
 
 
-def _block_specs() -> list[dict]:
-    data = yaml.safe_load((CONFIG_DIR / "paragraphs.yaml").read_text(encoding="utf-8")) or {}
+def _block_specs(plan_type: str | None = None) -> list[dict]:
+    data = paragraphs_for(plan_type)
     specs = list(data.get("action_required_headings") or [])
     specs.extend(data.get("notices") or [])
     specs.extend(data.get("sample_letters") or [])
@@ -363,9 +378,13 @@ _ADP_NHCE = re.compile(
 )
 
 
-def apply_recap_bullets(doc: fitz.Document, decisions: list[RuleDecision]) -> list[str]:
+def apply_recap_bullets(
+    doc: fitz.Document,
+    decisions: list[RuleDecision],
+    plan_type: str | None = None,
+) -> list[str]:
     """TEST23 §I: drop unused Important Information bullets and pack the page."""
-    specs = _recap_specs()
+    specs = _recap_specs(plan_type)
     if not specs:
         return []
     remove_ids = {item.rule_id for item in decisions if item.action == "remove"}
@@ -397,8 +416,8 @@ def apply_recap_bullets(doc: fitz.Document, decisions: list[RuleDecision]) -> li
     return removed
 
 
-def _recap_specs() -> list[dict]:
-    data = yaml.safe_load((CONFIG_DIR / "paragraphs.yaml").read_text(encoding="utf-8")) or {}
+def _recap_specs(plan_type: str | None = None) -> list[dict]:
+    data = paragraphs_for(plan_type)
     return list(data.get("recap_bullets") or [])
 
 

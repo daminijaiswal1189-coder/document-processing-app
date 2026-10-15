@@ -70,6 +70,9 @@ def parse_excel(data: bytes) -> dict[str, Any]:
         "per_payroll_match": _yes_no(_first(cells, "per payroll match", "per payroll")),
         "rework": _yes_no(_column(cells, "rework")),
         "rush": _yes_no(_column(cells, "rush")),
+        "non_governmental": _non_governmental(cells),
+        "forfeitures_reallocated": _forfeitures_reallocated(cells),
+        "no_forfeitures": _no_forfeitures(cells),
     }
     if method is None and "sh" in _first(cells, "prior", "current", "adp/acp").lower():
         overlay["safe_harbor"] = True
@@ -89,8 +92,18 @@ def parse_excel(data: bytes) -> dict[str, Any]:
         overlay["safe_harbor"] = True
     if re.search(r"catch-?up.{0,40}not allowed", notes, re.I):
         overlay["catchup_disallowed"] = True
+    if re.search(r"special catch-?up.{0,50}(not apply|do not apply|not allowed)", notes, re.I):
+        overlay["special_catchup_disallowed"] = True
+    if _yes_no(_first(cells, "special catch-up", "special catch up")) is False:
+        overlay["special_catchup_disallowed"] = True
     if re.search(r"partially vested", notes, re.I):
         overlay["partially_vested"] = True
+    if re.search(r"forfeitures are reallocated|forfeiture reallocation", notes, re.I):
+        overlay["forfeitures_reallocated"] = True
+    if re.search(r"no forfeitures", notes, re.I):
+        overlay["no_forfeitures"] = True
+    if overlay.get("non_governmental") is True:
+        overlay["plan_type"] = "457"
     if top_heavy is not None:
         overlay["top_heavy"] = top_heavy
     if reclass is True:
@@ -234,11 +247,40 @@ def _yes_no(value: str) -> bool | None:
 
 def _plan_type(value: str) -> str | None:
     text = (value or "").lower()
+    if "457" in text:
+        return "457"
     if "403" in text:
         return "403b"
     if "401" in text:
         return "401k"
     return value or None
+
+
+def _non_governmental(cells: dict[str, str]) -> bool | None:
+    for key, value in cells.items():
+        if "non-governmental" in key or "non governmental" in key:
+            return _yes_no(value)
+    return None
+
+
+def _forfeitures_reallocated(cells: dict[str, str]) -> bool | None:
+    for key, value in cells.items():
+        if "forfeit" not in key:
+            continue
+        if _yes_no(value) is True or re.search(r"reallocat", value or "", re.I):
+            return True
+    return None
+
+
+def _no_forfeitures(cells: dict[str, str]) -> bool | None:
+    for key, value in cells.items():
+        if "forfeit" not in key:
+            continue
+        if re.search(r"no forfeit", value or "", re.I):
+            return True
+        if _yes_no(value) is False and "reallocat" in key:
+            return True
+    return None
 
 
 def _normalize_date(value: str) -> str | None:

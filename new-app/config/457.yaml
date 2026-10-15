@@ -1,0 +1,41 @@
+# 457 assemblies. Loaded only when the plan type is 457.
+# A 457 package follows the 401(k) rules, then these Important Information edits.
+# 401(k) and 403(b) do not read this file.
+
+package:
+  keep_soc: true
+  require_full_reports: false
+
+rules:
+  - id: Y11
+    section: Recap 457 age 50 catch-up limit
+    keep_when:
+      all:
+        - field: catchup_disallowed
+          not_true: true
+    else: remove
+
+  - id: Y12
+    section: Recap forfeitures reallocated
+    keep_when:
+      all:
+        - field: forfeitures_reallocated
+          equals: true
+    else: remove
+
+  - id: Y13
+    section: Recap no forfeitures
+    keep_when:
+      all:
+        - field: no_forfeitures
+          equals: true
+    else: remove
+
+paragraphs:
+  recap_bullets:
+    - id: Y11
+      match: catch-up contribution is an amount up to
+    - id: Y12
+      match: reallocation of forfeitures
+    - id: Y13
+      match: no forfeitures available to reallocate

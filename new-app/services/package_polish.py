@@ -15,6 +15,7 @@ import fitz
 from models.plan_profile import PlanProfile
 from models.review import ValidationItem
 from services.file_order import matched_spec
+from services.plan_config import is_457_plan, package_flags
 
 _MONTHS = (
     "January",
@@ -47,6 +48,10 @@ _KEEP_PAGE = re.compile(
 _SOC_PAGE = re.compile(r"statement of contribution", re.I)
 _DISALLOWED_LINE = re.compile(
     r"escalat|form\s+5500|5500\s+wording|audited\s+wording|statement of contribution|\bSOC\b",
+    re.I,
+)
+_DISALLOWED_EXCEPT_SOC = re.compile(
+    r"escalat|form\s+5500|5500\s+wording|audited\s+wording",
     re.I,
 )
 _COMPLIANCE = re.compile(
@@ -101,10 +106,34 @@ def has_variance_client_copy(filenames: list[str], doc: fitz.Document) -> bool:
     return False
 
 
+def package_is_403b(uploads: list[tuple[str, bytes]]) -> bool:
+    """A 403(b) package keeps the BRF report and does not require a 410(b) file."""
+    for name, data in uploads:
+        if re.search(r"403\s*\(?\s*b\)?", name, re.I):
+            return True
+        if not name.lower().endswith(".pdf") or not data.startswith(b"%PDF"):
+            continue
+        try:
+            doc = fitz.open(stream=data, filetype="pdf")
+        except Exception:
+            continue
+        try:
+            text = "".join((page.get_text("text") or "") for page in doc[:2])
+        finally:
+            doc.close()
+        if re.search(r"403\s*\(?\s*b\)?", text, re.I):
+            return True
+    return False
+
+
 def exclude_brf_uploads(
     uploads: list[tuple[str, bytes]],
+    *,
+    keep_brf: bool = False,
 ) -> tuple[list[tuple[str, bytes]], list[str]]:
-    """A BRF result stays on the Result Summary. The BRF report file does not."""
+    """A 401(k) leaves the BRF report out. A 403(b) keeps it and bookmarks it."""
+    if keep_brf:
+        return list(uploads), []
     kept: list[tuple[str, bytes]] = []
     notes: list[str] = []
     for name, data in uploads:
@@ -143,18 +172,21 @@ def reorder_inner_pages(doc: fitz.Document) -> list[str]:
     return ["Reordered inner pages for " + ", ".join(dict.fromkeys(changed)) + "."]
 
 
-def remove_disallowed_wording(doc: fitz.Document) -> list[str]:
-    """MOA packages do not include audited, SOC, 5500, or escalation wording."""
+def remove_disallowed_wording(doc: fitz.Document, keep_soc: bool = False) -> list[str]:
+    """MOA packages do not include audited, SOC, 5500, or escalation wording.
+
+    A 457 package may keep the Statement of Contribution.
+    """
     removed: list[str] = []
     drop: list[int] = []
     for page in doc:
         text = page.get_text("text") or ""
-        if _SOC_PAGE.search(text) and not _KEEP_PAGE.search(text):
+        if not keep_soc and _SOC_PAGE.search(text) and not _KEEP_PAGE.search(text):
             drop.append(page.number)
             if "Statement of Contribution" not in removed:
                 removed.append("Statement of Contribution")
             continue
-        if _redact_matching_lines(page):
+        if _redact_matching_lines(page, keep_soc=keep_soc):
             if "Disallowed wording" not in removed:
                 removed.append("Disallowed wording")
     for number in reversed(drop):
@@ -162,6 +194,43 @@ def remove_disallowed_wording(doc: fitz.Document) -> list[str]:
     if not removed:
         return []
     return ["Removed " + ", ".join(removed) + "."]
+
+
+def rewrite_403b_adp_mentions(doc: fitz.Document) -> list[str]:
+    """403(b) packages mention ACP only. ADP/ACP becomes ACP, and leftover ADP lines are removed."""
+    changed = False
+    for page in doc:
+        hits = []
+        for phrase in ("ADP/ACP", "ADP / ACP", "ADP and/or ACP", "ADP and ACP"):
+            hits.extend(page.search_for(phrase))
+        if hits:
+            for rect in hits:
+                page.add_redact_annot(rect, text="ACP", fontsize=8, fill=(1, 1, 1))
+            page.apply_redactions()
+            changed = True
+        words = page.get_text("words") or []
+        lines: dict[int, list] = {}
+        for word in words:
+            lines.setdefault(round(word[1]), []).append(word)
+        dropped = False
+        for group in lines.values():
+            text = " ".join(str(word[4]) for word in group)
+            if not re.search(r"\bADP\b", text):
+                continue
+            rect = fitz.Rect(
+                min(word[0] for word in group),
+                min(word[1] for word in group),
+                max(word[2] for word in group),
+                max(word[3] for word in group),
+            )
+            page.add_redact_annot(rect, fill=(1, 1, 1))
+            dropped = True
+        if dropped:
+            page.apply_redactions()
+            changed = True
+    if not changed:
+        return []
+    return ["403(b) package uses ACP only. ADP testing wording was removed."]
 
 
 def drop_brf_pages(doc: fitz.Document) -> list[str]:
@@ -176,8 +245,8 @@ def drop_brf_pages(doc: fitz.Document) -> list[str]:
 def package_checks(doc: fitz.Document, profile: PlanProfile) -> list[ValidationItem]:
     items = [
         _cover_date_check(doc),
-        _compliance_check(doc),
-        _brf_check(doc),
+        _compliance_check(doc, profile),
+        _brf_check(doc, profile),
     ]
     items.extend(_result_summary_checks(doc))
     items.extend(_variance_checks(doc, profile))
@@ -239,14 +308,15 @@ def _is_brf_report(text: str) -> bool:
     return bool(_BRF_REPORT.search(_head(text)))
 
 
-def _redact_matching_lines(page: fitz.Page) -> bool:
+def _redact_matching_lines(page: fitz.Page, keep_soc: bool = False) -> bool:
+    pattern = _DISALLOWED_EXCEPT_SOC if keep_soc else _DISALLOWED_LINE
     boxes: list[fitz.Rect] = []
     for block in page.get_text("dict").get("blocks") or []:
         if block.get("type") != 0:
             continue
         for line in block.get("lines") or []:
             line_text = "".join(span.get("text") or "" for span in line.get("spans") or [])
-            if _DISALLOWED_LINE.search(line_text):
+            if pattern.search(line_text):
                 boxes.append(fitz.Rect(line["bbox"]))
     if not boxes:
         return False
@@ -290,7 +360,14 @@ def _cover_date_check(doc: fitz.Document) -> ValidationItem:
     )
 
 
-def _compliance_check(doc: fitz.Document) -> ValidationItem:
+def _compliance_check(doc: fitz.Document, profile: PlanProfile) -> ValidationItem:
+    if profile.midyear or is_457_plan(profile.plan_type):
+        return ValidationItem(
+            code="compliance_three_pages",
+            label="Compliance reports (3 pages)",
+            passed=True,
+            detail="This package does not use the three compliance report pages.",
+        )
     count = sum(1 for page in doc if _COMPLIANCE.search(page.get_text("text") or ""))
     return ValidationItem(
         code="compliance_three_pages",
@@ -302,8 +379,17 @@ def _compliance_check(doc: fitz.Document) -> ValidationItem:
     )
 
 
-def _brf_check(doc: fitz.Document) -> ValidationItem:
+def _brf_check(doc: fitz.Document, profile: PlanProfile) -> ValidationItem:
     left = [page.number + 1 for page in doc if _is_brf_report(page.get_text("text") or "")]
+    if package_flags(profile.plan_type).get("keep_brf"):
+        return ValidationItem(
+            code="brf_report",
+            label="BRF report",
+            passed=True,
+            detail="403(b) keeps the Benefits, Rights and Features test when that report is in the package."
+            if left
+            else "No BRF report was in this 403(b) package.",
+        )
     return ValidationItem(
         code="brf_report_omitted",
         label="BRF report omitted",

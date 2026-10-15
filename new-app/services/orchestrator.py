@@ -29,6 +29,8 @@ from services import (
     source_rewrite,
     ssn_scan,
 )
+from services import midyear, plan_457
+from services.plan_config import is_457_plan, package_flags, plan_family
 
 
 def process_uploads(
@@ -51,20 +53,28 @@ def process_uploads(
     highlights: list[dict] = []
     pdfs, excels = _split_uploads(uploads)
     valuation, summary_texts = _split_summaries(pdfs)
-    valuation, brf_notes = package_polish.exclude_brf_uploads(valuation)
+    is_403b = package_polish.package_is_403b(valuation)
+    is_midyear = midyear.package_is_midyear(valuation)
+    valuation, brf_notes = package_polish.exclude_brf_uploads(valuation, keep_brf=is_403b)
     warnings.extend(brf_notes)
     if not valuation:
         raise HTTPException(
             status_code=400,
             detail="BRF reports are not included, and no other PDF was uploaded.",
         )
-    ordered = file_order.order_uploads(valuation) if auto_order else list(valuation)
+    if is_midyear:
+        ordered = midyear.order_uploads(valuation) if auto_order else list(valuation)
+    else:
+        ordered = file_order.order_uploads(valuation) if auto_order else list(valuation)
     doc = pdf_assembler.merge_pdfs(ordered)
     email_path = ""
     log_file = ""
     saved_copy = ""
     subject = ""
     try:
+        if is_midyear or midyear.package_is_midyear([], doc):
+            is_midyear = True
+            warnings.extend(midyear.reorder_pages(doc))
         warnings.extend(package_polish.reorder_inner_pages(doc))
         profile = pdf_extractor.extract_plan_profile(doc)
         pdf_plan_name = profile.plan_name
@@ -87,14 +97,33 @@ def process_uploads(
         profile = source_profile.merge_overlays(profile, overlays, warnings)
         if package_polish.has_variance_client_copy([name for name, _data in ordered], doc):
             profile.contributions_required = True
+        cover_text = "\n".join((page.get_text("text") or "") for page in doc[:2])
+        family = plan_family(cover_text)
+        if family:
+            profile.plan_type = family
+        elif is_403b and not (profile.plan_type or "").strip():
+            profile.plan_type = "403b"
+        if is_midyear:
+            profile.midyear = True
+            for key, value in midyear.read_letter_facts(doc).items():
+                if getattr(profile, key, None) in (None, ""):
+                    setattr(profile, key, value)
         profile = plan_profile_service.finalize_profile(profile)
         review = review_service.validate(profile, doc=doc)
         decisions = rules_engine.evaluate(profile)
-        removed = pdf_modifier.apply_decisions(doc, decisions)
-        recap_removed = pdf_modifier.apply_recap_bullets(doc, decisions)
+        removed = pdf_modifier.apply_decisions(doc, decisions, profile.plan_type)
+        recap_removed = pdf_modifier.apply_recap_bullets(doc, decisions, profile.plan_type)
         filled = pdf_modifier.fill_qnec_placeholders(doc, profile, highlights)
-        warnings.extend(package_polish.remove_disallowed_wording(doc))
-        warnings.extend(package_polish.drop_brf_pages(doc))
+        flags = package_flags(profile.plan_type)
+        if is_457_plan(profile.plan_type):
+            warnings.extend(plan_457.remove_contribution_overview(doc))
+        if profile.midyear:
+            warnings.extend(midyear.apply_letter(doc, profile))
+        warnings.extend(package_polish.remove_disallowed_wording(doc, keep_soc=bool(flags.get("keep_soc"))))
+        if flags.get("rewrite_adp_mentions"):
+            warnings.extend(package_polish.rewrite_403b_adp_mentions(doc))
+        else:
+            warnings.extend(package_polish.drop_brf_pages(doc))
         if rewrite_sources:
             warnings.extend(source_rewrite.apply_source_rewrites(doc, profile, highlights))
         else:
@@ -106,6 +135,16 @@ def process_uploads(
             profile,
             source_files=[name for name, _data in ordered],
         )
+        if bookmark_service.is_testing_only(doc) and not profile.midyear and not is_457_plan(profile.plan_type):
+            if flags.get("rewrite_adp_mentions"):
+                warnings.append(
+                    "ACP only package. Bookmarks: Cover Letter, Test Summary, HCE, Future HCE, ACP Test."
+                )
+            else:
+                warnings.append(
+                    "ADP/ACP only package. Bookmarks: Cover Letter, Test Summary, HCE/Key, "
+                    "Future HCE, ADP/ACP Tests."
+                )
         ssn_pages = ssn_scan.scan_ssns(doc)
         review.ssn_found = bool(ssn_pages)
         review.ssn_pages = ssn_pages

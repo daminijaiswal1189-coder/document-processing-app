@@ -1,15 +1,13 @@
 from __future__ import annotations
 
-import yaml
-
-from config.settings import CONFIG_DIR
 from models.plan_profile import PlanProfile
 from models.review import RuleDecision
+from services.plan_config import rules_for
 
 
 def evaluate(profile: PlanProfile) -> list[RuleDecision]:
-    """Return keep/remove decisions. Does not modify the PDF."""
-    spec = yaml.safe_load((CONFIG_DIR / "rules.yaml").read_text(encoding="utf-8")) or {}
+    """Return keep/remove decisions. A 403(b) plan uses config/403b.yaml."""
+    spec = rules_for(profile.plan_type)
     decisions: list[RuleDecision] = []
     for rule in spec.get("rules") or []:
         decisions.append(_apply_rule(rule, profile))

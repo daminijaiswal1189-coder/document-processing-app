@@ -13,6 +13,7 @@ import fitz
 
 from models.plan_profile import PlanProfile
 from services import file_order, ssn_scan
+from services.plan_config import package_flags
 from services.source_rewrite import calendar_402g_year
 
 _SLASH_WORDING = re.compile(
@@ -274,6 +275,10 @@ def _missing_report_reasons(
     required = [label for label, _file_pattern, _head_pattern in _REPORTS]
     if profile.safe_harbor is True:
         required = [label for label in required if label != "ADP/ACP Test Report"]
+    if not package_flags(profile.plan_type).get("require_410b_report", True):
+        required = [label for label in required if label != "410(b) Test Report"]
+    if not package_flags(profile.plan_type).get("require_full_reports", True):
+        required = []
     missing = [label for label in required if label not in present]
     summary = _summary_text(doc)
     for label, summary_pattern, _file_pattern, _head_pattern in _EXTRA_REPORTS:

@@ -4,6 +4,7 @@ from datetime import datetime
 
 from models.plan_profile import PlanProfile
 from services.pdf_extractor import beginning_plan_year
+from services.plan_config import is_457_plan, package_flags
 
 
 def finalize_profile(profile: PlanProfile) -> PlanProfile:
@@ -36,12 +37,27 @@ def finalize_profile(profile: PlanProfile) -> PlanProfile:
     if profile.returns_already_processed or profile.adp_reclassified:
         profile.returns_required = False
 
+    if is_457_plan(profile.plan_type):
+        if profile.non_governmental:
+            profile.catchup_disallowed = True
+        if profile.forfeitures_reallocated is None:
+            profile.forfeitures_reallocated = False
+        if profile.no_forfeitures is None:
+            profile.no_forfeitures = False
+
+    flags = package_flags(profile.plan_type)
+    if flags.get("ignore_adp_results"):
+        profile.adp_failed = False
+        profile.adp_qnec = None
+        profile.total_qnec = profile.acp_qnec
+
     outstanding = profile.returns_required is True and profile.adp_reclassified is not True
     action_items: list[str] = []
     if outstanding and (profile.fail_402g or profile.fail_415):
         action_items.append("Compliance returns required")
     if outstanding and (profile.adp_failed or profile.acp_failed):
-        action_items.append("ADP/ACP returns required")
+        label = "ACP returns required" if flags.get("ignore_adp_results") else "ADP/ACP returns required"
+        action_items.append(label)
     if profile.top_heavy:
         action_items.append("Top heavy")
     if profile.variance_report:

@@ -16,25 +16,14 @@ action_required_headings:
       - Contribution refunds to participants are required to correct ADP/ACP testing failures
       - Excess Summary
       - Form W-4P
-  - id: B
-    heading: IMMEDIATE ACTION REQUIRED - ACP TEST FAILURE
-    variant: PRIOR
   - id: C
     heading: IMMEDIATE ACTION REQUIRED - ADP/ACP TEST FAILURE
     variant: CURRENT
     block_contains: unless QNEC
-    must_include:
-      - unless QNEC contributions will be made
-      - Excess Summary
-      - Form W-4P
   - id: D
     heading: IMMEDIATE ACTION REQUIRED - ADP/ACP CURRENT METHOD TEST FAILURE - AFTER 12-MONTHS
-  - id: D
-    heading: IMMEDIATE ACTION REQUIRED - ACP CURRENT METHOD TEST FAILURE - AFTER 12-MONTHS
   - id: E
     heading: IMMEDIATE ACTION REQUIRED - ADP/ACP PRIOR METHOD TEST FAILURE - AFTER 12-MONTHS
-  - id: E
-    heading: IMMEDIATE ACTION REQUIRED - ACP PRIOR METHOD TEST FAILURE - AFTER 12-MONTHS
   - id: F
     heading: IMMEDIATE ACTION REQUIRED - TOP HEAVY
   - id: F
