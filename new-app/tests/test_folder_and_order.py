@@ -96,6 +96,22 @@ def test_split_packet_uses_page_text_to_put_result_summary_second():
     assert meta["ranks"][2] < meta["ranks"][1]
 
 
+def test_backend_orders_split_packet_pages_even_if_the_client_order_is_stale():
+    names = [
+        "2026_401(K)_Valuation Pkg_p02.pdf",
+        "2026Result Summ.pdf",
+        "2026_401(K)_Valuation Pkg_p01.pdf",
+        "2026_401(K)_Valuation Pkg_p08.pdf",
+    ]
+    ordered = [name for name, _data in order_uploads([(name, b"%PDF") for name in names])]
+    assert ordered == [
+        "2026_401(K)_Valuation Pkg_p01.pdf",
+        "2026Result Summ.pdf",
+        "2026_401(K)_Valuation Pkg_p02.pdf",
+        "2026_401(K)_Valuation Pkg_p08.pdf",
+    ]
+
+
 def test_named_result_summary_is_kept_in_the_package_and_read():
     import fitz
 

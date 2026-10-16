@@ -24,8 +24,45 @@ def _spec_aliases(spec: dict) -> list[str]:
 def _best_section(filename: str) -> tuple[int, dict] | None:
     """Longest keyword match wins so SHMaVar is not treated as MaVar, 401a4 is not 401k, etc."""
     name = _norm(filename)
+    specs = load_section_specs()
+    paged = re.search(r"_p0*(\d+)(?:\.[^.]+)?$", filename, re.I)
+    if paged:
+        page = int(paged.group(1))
+        parent = re.sub(r"_p0*\d+(?=\.[^.]+$)", "", filename, flags=re.I)
+        parent_norm = _norm(parent)
+        for spec in specs:
+            if not spec.get("split_pages"):
+                continue
+            if not any(
+                (token := _norm(alias)) and token in parent_norm
+                for alias in _spec_aliases(spec)
+            ):
+                continue
+            labels = [
+                str(item)
+                for item in (spec.get("split_page_labels") or COVER_PACKET_PAGE_LABELS)
+            ]
+            if 1 <= page <= len(labels):
+                return _best_label_section(labels[page - 1], specs)
     best: tuple[int, int, dict] | None = None
-    for index, spec in enumerate(load_section_specs()):
+    for index, spec in enumerate(specs):
+        for alias in _spec_aliases(spec):
+            token = _norm(alias)
+            if not token or token not in name:
+                continue
+            score = (len(token), -index)
+            if best is None or score > (best[0], best[1]):
+                best = (len(token), -index, spec)
+    if not best:
+        return None
+    _, neg_index, spec = best
+    return -neg_index, spec
+
+
+def _best_label_section(label: str, specs: list[dict]) -> tuple[int, dict] | None:
+    name = _norm(label)
+    best: tuple[int, int, dict] | None = None
+    for index, spec in enumerate(specs):
         for alias in _spec_aliases(spec):
             token = _norm(alias)
             if not token or token not in name:

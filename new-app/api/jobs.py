@@ -87,7 +87,7 @@ async def create_job(
     try:
         result = process_uploads(
             uploads,
-            auto_order=auto_order and not row_names,
+            auto_order=auto_order,
             extra_warnings=warnings,
             source_folder=folder or None,
             rewrite_sources=rewrite_sources,

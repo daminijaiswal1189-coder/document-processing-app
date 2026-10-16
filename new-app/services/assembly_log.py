@@ -7,6 +7,7 @@ Failed Comp Limit is always N/A for MOA.
 from __future__ import annotations
 
 import re
+import warnings
 from copy import copy
 from datetime import datetime
 from pathlib import Path
@@ -68,7 +69,7 @@ def append_row(
     log_path.parent.mkdir(parents=True, exist_ok=True)
     saved: list[tuple[list, str]] = []
     if log_path.is_file():
-        book = load_workbook(log_path)
+        book = _load_workbook(log_path)
         sheet = book.active
         if not _uses_template_layout(sheet):
             saved = _saved_rows(sheet)
@@ -109,7 +110,7 @@ def _instruction_row(sheet) -> int | None:
 
 def _book_from_template():
     if _TEMPLATE.is_file():
-        book = load_workbook(_TEMPLATE)
+        book = _load_workbook(_TEMPLATE)
         sheet = book.active
         _strip_instructions(sheet)
         return book, sheet
@@ -118,6 +119,18 @@ def _book_from_template():
     sheet.title = "Val Assembly Log"
     _write_headers(sheet)
     return book, sheet
+
+
+def _load_workbook(path: Path):
+    """Ignore only openpyxl's warning for unsupported Excel validation extensions."""
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message=r"Data Validation extension is not supported and will be removed",
+            category=UserWarning,
+            module=r"openpyxl\..*",
+        )
+        return load_workbook(path)
 
 
 def _strip_instructions(sheet) -> None:

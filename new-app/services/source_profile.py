@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import re
+import warnings
 from datetime import datetime
 from typing import Any
 
@@ -21,7 +22,14 @@ _PERCENT = re.compile(r"(\d+(?:\.\d+)?)\s*%")
 
 def parse_excel(data: bytes) -> dict[str, Any]:
     """Read the Val Assembly / Omnium checklist (CURRENT vs PRIOR, reclass, HCE)."""
-    book = load_workbook(io.BytesIO(data), data_only=True)
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message=r"Data Validation extension is not supported and will be removed",
+            category=UserWarning,
+            module=r"openpyxl\..*",
+        )
+        book = load_workbook(io.BytesIO(data), data_only=True)
     sheet = book.active
     cells: dict[str, str] = {}
     headers: list[str] = []
