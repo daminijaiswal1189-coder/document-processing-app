@@ -92,12 +92,31 @@ def process_uploads(
             warnings.append(f"Read Compliance Testing Summary: {name}")
         if not summary_texts:
             merged_text = "\n".join((page.get_text("text") or "") for page in doc)
-            parsed = source_profile.parse_summary_text(merged_text)
-            if parsed.get("adp_failed") is not None or parsed.get("fail_402g") is not None:
-                overlays.append(parsed)
+            if re.search(
+                r"compliance testing summary of results|result summary|test summary",
+                merged_text,
+                re.I,
+            ):
+                parsed = source_profile.parse_summary_text(merged_text)
+                if parsed.get("adp_failed") is not None or parsed.get("fail_402g") is not None:
+                    overlays.append(parsed)
+        explicit_contributions = any(
+            "contributions_required" in overlay for overlay in overlays
+        )
         profile = source_profile.merge_overlays(profile, overlays, warnings)
+        section_names = {
+            str(spec.get("name"))
+            for name, _data in ordered
+            if (spec := file_order.matched_spec(name))
+        }
+        if profile.hce_current is None and "HCE/Key" in section_names:
+            profile.hce_current = True
+        if profile.hce_future is None and "Future HCE" in section_names:
+            profile.hce_future = True
         if package_polish.has_variance_client_copy([name for name, _data in ordered], doc):
             profile.contributions_required = True
+            explicit_contributions = True
+        profile.extra["contributions_explicit"] = explicit_contributions
         cover_text = "\n".join((page.get_text("text") or "") for page in doc[:2])
         family = plan_family(cover_text)
         if family:
@@ -249,12 +268,13 @@ def _split_summaries(pdfs: list[tuple[str, bytes]]) -> tuple[list[tuple[str, byt
     summaries: list[tuple[str, str]] = []
     for name, data in pdfs:
         text = _pdf_text(data)
-        if "compliance testing summary of results" in text.lower():
+        named_summary = bool(re.search(r"result\s*summ|test\s*summ", name, re.I))
+        if "compliance testing summary of results" in text.lower() or named_summary:
             summaries.append((name, text))
             # A named Result/Test Summary is both an extraction source and a
             # required package page. A generic compliance-summary sidecar is
             # extraction-only for backward compatibility.
-            if re.search(r"result\s*summ|test\s*summ", name, re.I):
+            if named_summary:
                 valuation.append((name, data))
         else:
             valuation.append((name, data))

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from models.plan_profile import PlanProfile
 from services.pdf_extractor import beginning_plan_year
@@ -12,8 +12,9 @@ def finalize_profile(profile: PlanProfile) -> PlanProfile:
     if profile.plan_year_start is None and profile.plan_year_end:
         try:
             end = datetime.strptime(profile.plan_year_end, "%m/%d/%Y")
-            if end.month == 12 and end.day == 31:
-                profile.plan_year_start = f"01/01/{end.year}"
+            next_day = end + timedelta(days=1)
+            start = next_day.replace(year=next_day.year - 1)
+            profile.plan_year_start = start.strftime("%m/%d/%Y")
         except ValueError:
             pass
     if profile.beginning_plan_year is None and profile.plan_year_start:
@@ -22,12 +23,25 @@ def finalize_profile(profile: PlanProfile) -> PlanProfile:
     if profile.top_heavy is None and profile.top_heavy_percent is not None:
         profile.top_heavy = profile.top_heavy_percent >= 60
 
-    if profile.testing_failed is None:
-        known = [profile.adp_failed, profile.acp_failed, profile.fail_402g, profile.fail_415]
-        if any(v is True for v in known):
-            profile.testing_failed = True
-        elif all(v is False for v in known):
-            profile.testing_failed = False
+    flags = package_flags(profile.plan_type)
+    if flags.get("ignore_adp_results"):
+        profile.adp_failed = False
+        profile.adp_qnec = None
+
+    known = [profile.adp_failed, profile.acp_failed, profile.fail_402g, profile.fail_415]
+    if any(v is True for v in known):
+        profile.testing_failed = True
+    elif all(v is False for v in known):
+        profile.testing_failed = False
+    if profile.testing_failed is False:
+        profile.returns_required = False
+    if (
+        profile.testing_failed is False
+        and profile.variance_report is not True
+        and profile.true_up is not True
+        and profile.extra.get("contributions_explicit") is not True
+    ):
+        profile.contributions_required = False
 
     if profile.total_qnec is None:
         parts = [v for v in (profile.adp_qnec, profile.acp_qnec) if v is not None]
@@ -45,10 +59,7 @@ def finalize_profile(profile: PlanProfile) -> PlanProfile:
         if profile.no_forfeitures is None:
             profile.no_forfeitures = False
 
-    flags = package_flags(profile.plan_type)
     if flags.get("ignore_adp_results"):
-        profile.adp_failed = False
-        profile.adp_qnec = None
         profile.total_qnec = profile.acp_qnec
 
     outstanding = profile.returns_required is True and profile.adp_reclassified is not True

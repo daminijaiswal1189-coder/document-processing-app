@@ -179,7 +179,12 @@ def merge_overlays(profile: PlanProfile, overlays: list[dict[str, Any]], warning
 
 
 def _tested_fail(blob: str, name: str) -> bool | None:
-    match = re.search(r"(?:" + name + r").{0,50}?Tested:\s*(Pass|Fail)", blob, flags=re.I)
+    match = re.search(
+        r"(?:" + name + r").{0,100}?"
+        r"(?:Test(?:ed)?|Result)?\s*[:=\-]?\s*(Pass|Fail)\b",
+        blob,
+        flags=re.I,
+    )
     if not match:
         return None
     return match.group(1).lower() == "fail"

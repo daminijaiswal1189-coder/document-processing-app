@@ -45,12 +45,15 @@ def _apply_rule(rule: dict, profile: PlanProfile) -> RuleDecision:
 def _conditions_met(keep_when: dict, profile: PlanProfile) -> tuple[bool, bool, str]:
     clauses = keep_when.get("all") or []
     reasons: list[str] = []
+    missing: list[str] = []
     for clause in clauses:
         if "any_true" in clause:
             fields = clause["any_true"]
             values = [getattr(profile, name, None) for name in fields]
             if all(v is None for v in values):
-                return False, True, f"missing {', '.join(fields)}"
+                missing.extend(fields)
+                reasons.append(f"missing {', '.join(fields)}")
+                continue
             matched = any(v is True for v in values)
             reasons.append(f"{fields} any true={matched}")
             if not matched:
@@ -68,9 +71,13 @@ def _conditions_met(keep_when: dict, profile: PlanProfile) -> tuple[bool, bool, 
         expected = clause.get("equals")
         actual = getattr(profile, field, None)
         if actual is None:
-            return False, True, f"missing {field}"
+            missing.append(field)
+            reasons.append(f"missing {field}")
+            continue
         matched = actual == expected
         reasons.append(f"{field}={actual}")
         if not matched:
             return False, False, "; ".join(reasons)
+    if missing:
+        return False, True, "; ".join(reasons)
     return True, False, "; ".join(reasons) or "no conditions"

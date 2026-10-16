@@ -11,7 +11,8 @@ from services.package_polish import hce_max_percent
 from services.plan_config import package_flags, paragraphs_for
 
 _TITLE_ONLY = re.compile(
-    r"^(action required|annual valuation report(?:/action required)?)\s*$",
+    r"^(action required|annual valuation report(?:/action required)?|"
+    r"sample/draft(?: communication to participant)?)\s*$",
     re.I,
 )
 
