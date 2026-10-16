@@ -69,7 +69,13 @@ def add_bookmarks(
         if title in seen:
             continue
         page = _bookmark_page(doc, section.name, section.page)
-        toc.append([1, title, page])
+        destination = {
+            "kind": fitz.LINK_GOTO,
+            "page": page - 1,
+            "to": fitz.Point(0, 0),
+            "zoom": 0,
+        }
+        toc.append([1, title, page, destination])
         seen.add(title)
     if toc:
         doc.set_toc(toc)

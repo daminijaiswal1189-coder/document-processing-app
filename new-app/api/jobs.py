@@ -10,7 +10,7 @@ from models.job import JobResult
 from services.change_marks import apply_highlights, load_marks
 from services.file_order import list_file_meta
 from services.folder_loader import apply_file_order, list_folder_files, load_pdfs_from_folder
-from services.pdf_pages import expand_uploads_by_page, pdf_page_count
+from services.pdf_pages import expand_uploads_by_page, pdf_page_count, pdf_page_texts
 from services.orchestrator import process_uploads
 
 router = APIRouter()
@@ -122,12 +122,14 @@ async def inspect_uploads(files: list[UploadFile] | None = File(default=None)) -
             continue
         data = await upload.read()
         pages = 1
+        page_texts: list[str] = []
         if name.lower().endswith(".pdf") and data:
             try:
                 pages = pdf_page_count(data)
+                page_texts = pdf_page_texts(data)
             except Exception:
                 pages = 1
-        listed.append(list_file_meta(name, len(data or b""), pages))
+        listed.append(list_file_meta(name, len(data or b""), pages, page_texts))
     return {"files": listed}
 
 

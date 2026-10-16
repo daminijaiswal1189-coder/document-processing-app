@@ -6,7 +6,7 @@ from fastapi import HTTPException
 
 from config.settings import MAX_FILE_BYTES, MAX_FILES
 from services.file_order import list_file_meta
-from services.pdf_pages import pdf_page_count_path
+from services.pdf_pages import pdf_page_count_path, pdf_page_texts_path
 
 
 def _resolved_dir(raw_path: str) -> Path:
@@ -41,7 +41,8 @@ def list_folder_files(raw_path: str) -> dict:
     warnings: list[str] = [f"Skipped non-PDF (convert to PDF before combine): {name}" for name in skipped]
     for item in source_paths:
         pages = pdf_page_count_path(item)
-        meta = list_file_meta(item.name, item.stat().st_size, pages)
+        page_texts = pdf_page_texts_path(item) if item.suffix.lower() == ".pdf" else []
+        meta = list_file_meta(item.name, item.stat().st_size, pages, page_texts)
         files.append(meta)
         if meta["split"]:
             warnings.append(f"{item.name} has {pages} pages; each page is listed so you can reorder.")

@@ -26,6 +26,27 @@ def pdf_page_count_path(path: Path) -> int:
         return 1
 
 
+def pdf_page_texts(data: bytes) -> list[str]:
+    doc = fitz.open(stream=data, filetype="pdf")
+    try:
+        return [(page.get_text("text") or "") for page in doc]
+    finally:
+        doc.close()
+
+
+def pdf_page_texts_path(path: Path) -> list[str]:
+    if path.suffix.lower() != ".pdf":
+        return []
+    try:
+        doc = fitz.open(path)
+        try:
+            return [(page.get_text("text") or "") for page in doc]
+        finally:
+            doc.close()
+    except Exception:
+        return []
+
+
 def extract_pdf_page(data: bytes, page: int) -> bytes:
     """Return a one-page PDF. page is 1-based."""
     doc = fitz.open(stream=data, filetype="pdf")

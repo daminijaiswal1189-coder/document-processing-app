@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import time
 import uuid
 from datetime import datetime, timezone
@@ -250,6 +251,11 @@ def _split_summaries(pdfs: list[tuple[str, bytes]]) -> tuple[list[tuple[str, byt
         text = _pdf_text(data)
         if "compliance testing summary of results" in text.lower():
             summaries.append((name, text))
+            # A named Result/Test Summary is both an extraction source and a
+            # required package page. A generic compliance-summary sidecar is
+            # extraction-only for backward compatibility.
+            if re.search(r"result\s*summ|test\s*summ", name, re.I):
+                valuation.append((name, data))
         else:
             valuation.append((name, data))
     return valuation, summaries

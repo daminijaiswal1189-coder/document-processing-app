@@ -75,6 +75,48 @@ def test_auto_order_matches_the_report_list():
 def test_sop_rank_cover_before_census():
     assert sop_rank("222222 2024 401k Valuation Pkg.pdf") < sop_rank("2024Census.pdf")
     assert sop_rank("2024ADP-ACP.pdf") < sop_rank("2024402G.pdf")
+    assert sop_rank("2027HCE.pdf") < sop_rank("2024ADP-ACP.pdf")
+
+
+def test_split_packet_uses_page_text_to_put_result_summary_second():
+    from services.file_order import list_file_meta
+
+    meta = list_file_meta(
+        "900062 2025 Valuation Package.pdf",
+        100,
+        3,
+        [
+            "Mutual of America\nRE: Example 401(k) Plan\nperiod ending 12/31/2025",
+            "Annual Valuation Report\nAction Required",
+            "Result Summary\nADP Test: Pass\nACP Test: Pass",
+        ],
+    )
+    assert meta["labels"] == ["Cover Letter", "Action required", "Test Summary"]
+    assert meta["ranks"][2] == sop_rank("Result Summary.pdf")
+    assert meta["ranks"][2] < meta["ranks"][1]
+
+
+def test_named_result_summary_is_kept_in_the_package_and_read():
+    import fitz
+
+    from services.orchestrator import _split_summaries
+
+    doc = fitz.open()
+    doc.new_page().insert_text(
+        (72, 72),
+        "Compliance Testing Summary of Results\nADP Test: Pass",
+        fontsize=11,
+    )
+    data = doc.tobytes()
+    doc.close()
+
+    valuation, summaries = _split_summaries([("2026Result Summ.pdf", data)])
+    assert [name for name, _data in valuation] == ["2026Result Summ.pdf"]
+    assert [name for name, _text in summaries] == ["2026Result Summ.pdf"]
+
+    valuation, summaries = _split_summaries([("compliance-summary.pdf", data)])
+    assert valuation == []
+    assert [name for name, _text in summaries] == ["compliance-summary.pdf"]
 
 
 def test_order_uploads_follows_sop_not_filename_sort():

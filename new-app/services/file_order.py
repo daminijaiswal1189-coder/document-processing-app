@@ -104,13 +104,63 @@ def rank_for_label(label: str, fallback: int) -> int:
     return found[0]
 
 
-def list_file_meta(name: str, size: int, pages: int) -> dict:
+def page_label_from_text(text: str, fallback: str) -> str:
+    """Recognize key packet pages instead of relying only on physical position."""
+    body = re.sub(r"\s+", " ", text or "").strip()
+    if not body:
+        return fallback
+    if re.search(
+        r"\b(result|test)\s+summary\b|compliance testing summary of results",
+        body,
+        re.I,
+    ):
+        return "Test Summary"
+    if re.search(
+        r"\b(?:immediate\s+)?action required\b|no immediate action is required",
+        body,
+        re.I,
+    ):
+        return "Action required"
+    if re.search(r"failed compliance testing|excess return notice", body, re.I):
+        return "ADP/ACP Failure excess page Current year"
+    if re.search(r"annual additions\s*\(irc\s*415\).*failure information", body, re.I):
+        return "415 Failure information"
+    if re.search(r"\bimportant information\b|year[- ]end recap", body, re.I):
+        return "Year End Recap"
+    if re.search(r"compliance and administrative|overview and descriptions", body, re.I):
+        return "Compliance Reports"
+    if re.search(
+        r"mutual of america|we are pleased to provide|as you requested",
+        body,
+        re.I,
+    ) and re.search(r"\bRE\s*:|period ending|valuation package", body, re.I):
+        return "Cover Letter"
+    # "Annual Valuation Report" is the action-page title in some source packets.
+    if re.search(r"\bannual valuation report\b", body, re.I):
+        return "Action required"
+    return fallback
+
+
+def list_file_meta(
+    name: str,
+    size: int,
+    pages: int,
+    page_texts: list[str] | None = None,
+) -> dict:
     split = should_split_pages(name, pages)
     labels = (
         [display_label(name, page=page, page_count=pages) for page in range(1, pages + 1)]
         if split
         else [display_label(name)]
     )
+    if split and page_texts:
+        labels = [
+            page_label_from_text(
+                page_texts[index] if index < len(page_texts) else "",
+                label,
+            )
+            for index, label in enumerate(labels)
+        ]
     file_rank = sop_rank(name)
     return {
         "name": name,

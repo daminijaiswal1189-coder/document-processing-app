@@ -53,6 +53,26 @@ def test_add_bookmarks_uses_adp_test_title():
     assert toc[0][1] == "ADP Test"
 
 
+def test_bookmark_has_an_explicit_top_of_page_destination():
+    doc = fitz.open()
+    doc.new_page()
+    doc.new_page()
+    profile = PlanProfile(
+        plan_type="401k",
+        detected_sections=[
+            DetectedSection(name="Future HCE", page=2, matched_alias="Future HCE"),
+        ],
+    )
+    try:
+        assert add_bookmarks(doc, profile) == 1
+        toc = doc.get_toc(simple=False)
+    finally:
+        doc.close()
+    assert toc[0][2] == 2
+    assert toc[0][3]["kind"] == fitz.LINK_GOTO
+    assert toc[0][3]["page"] == 1
+
+
 def test_assembled_pdf_bookmark_from_adp_filename(tmp_path, monkeypatch):
     import services.save_service as save_service
 
