@@ -94,6 +94,7 @@
     }
     .app.upload-hidden #controls { display: none; }
     .app.upload-hidden .upload-bar { display: flex; }
+    .app.has-results:not(.upload-hidden) #results { display: none; }
     .upload-bar span { color: var(--muted); font-size: 0.78rem; }
     .top-row {
       display: flex;
@@ -669,6 +670,7 @@
 
     function setUploadOpen(open) {
       app.classList.toggle("upload-hidden", !open);
+      if (open) renderFiles();
     }
 
     picker.addEventListener("change", () => {
@@ -1030,7 +1032,7 @@
           throw new Error(formatDetail(payload.detail) || response.statusText);
         }
         showResults(payload);
-        showElapsed("Done. Time to process: ", payload.elapsed_seconds == null ? (Date.now() - processStarted) / 1000 : payload.elapsed_seconds);
+        setStatus("");
       } catch (err) {
         const raw = err.message || String(err);
         errorEl.textContent = raw === "Failed to fetch"
