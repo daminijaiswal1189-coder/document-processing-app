@@ -9,32 +9,40 @@ from services.plan_config import is_457_plan, package_flags
 
 def finalize_profile(profile: PlanProfile) -> PlanProfile:
     """Normalize derived fields after extraction."""
+    field_sources = profile.extra.setdefault("field_sources", {})
     if profile.plan_year_start is None and profile.plan_year_end:
         try:
             end = datetime.strptime(profile.plan_year_end, "%m/%d/%Y")
             next_day = end + timedelta(days=1)
             start = next_day.replace(year=next_day.year - 1)
             profile.plan_year_start = start.strftime("%m/%d/%Y")
+            field_sources["plan_year_start"] = "Derived from plan_year_end"
         except ValueError:
             pass
     if profile.beginning_plan_year is None and profile.plan_year_start:
         profile.beginning_plan_year = beginning_plan_year(profile.plan_year_start)
+        field_sources["beginning_plan_year"] = "Derived from plan_year_start"
 
     if profile.top_heavy is None and profile.top_heavy_percent is not None:
         profile.top_heavy = profile.top_heavy_percent >= 60
+        field_sources["top_heavy"] = "Derived from top_heavy_percent"
 
     flags = package_flags(profile.plan_type)
     if flags.get("ignore_adp_results"):
         profile.adp_failed = False
         profile.adp_qnec = None
+        field_sources["adp_failed"] = "403(b) configuration: ADP not applicable"
 
     known = [profile.adp_failed, profile.acp_failed, profile.fail_402g, profile.fail_415]
     if any(v is True for v in known):
         profile.testing_failed = True
+        field_sources["testing_failed"] = "Derived from test failure fields"
     elif all(v is False for v in known):
         profile.testing_failed = False
+        field_sources["testing_failed"] = "Derived from test failure fields"
     if profile.testing_failed is False:
         profile.returns_required = False
+        field_sources["returns_required"] = "Derived: all applicable tests passed"
     if (
         profile.testing_failed is False
         and profile.variance_report is not True
@@ -42,6 +50,7 @@ def finalize_profile(profile: PlanProfile) -> PlanProfile:
         and profile.extra.get("contributions_explicit") is not True
     ):
         profile.contributions_required = False
+        field_sources["contributions_required"] = "Derived: no failure, variance, true-up, or explicit contribution requirement"
 
     if profile.total_qnec is None:
         parts = [v for v in (profile.adp_qnec, profile.acp_qnec) if v is not None]
@@ -82,9 +91,11 @@ def finalize_profile(profile: PlanProfile) -> PlanProfile:
         or profile.fail_415
         or (profile.partially_vested and (profile.adp_failed or profile.acp_failed))
     )
+    field_sources["keep_excess_summary"] = "Derived from non-ACP failures or partial vesting"
     profile.action_required_items = action_items
     if action_items:
         profile.has_action_required = True
+        field_sources["has_action_required"] = "Derived from action_required_items"
     elif any(
         v is False
         for v in (
@@ -97,4 +108,5 @@ def finalize_profile(profile: PlanProfile) -> PlanProfile:
         )
     ):
         profile.has_action_required = False
+        field_sources["has_action_required"] = "Derived from known no-action conditions"
     return profile

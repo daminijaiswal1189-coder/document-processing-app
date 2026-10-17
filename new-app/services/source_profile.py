@@ -162,7 +162,12 @@ def parse_summary_text(text: str) -> dict[str, Any]:
     return {key: value for key, value in overlay.items() if value not in (None, "")}
 
 
-def merge_overlays(profile: PlanProfile, overlays: list[dict[str, Any]], warnings: list[str]) -> PlanProfile:
+def merge_overlays(
+    profile: PlanProfile,
+    overlays: list[dict[str, Any]],
+    warnings: list[str],
+    sources: list[str] | None = None,
+) -> PlanProfile:
     numbers = [str(item["plan_number"]) for item in overlays if item.get("plan_number")]
     if profile.plan_number:
         numbers.append(profile.plan_number)
@@ -172,9 +177,13 @@ def merge_overlays(profile: PlanProfile, overlays: list[dict[str, Any]], warning
             "Plan number differs between Excel and summary (" + ", ".join(unique) + "). "
             "Pass/fail comes from the Compliance Testing Summary."
         )
-    for overlay in overlays:
+    field_sources = dict(profile.extra.get("field_sources") or {})
+    for index, overlay in enumerate(overlays):
+        source = sources[index] if sources and index < len(sources) else "overlay"
         for key, value in overlay.items():
             setattr(profile, key, value)
+            field_sources[key] = source
+    profile.extra["field_sources"] = field_sources
     return profile
 
 

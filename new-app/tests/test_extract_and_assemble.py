@@ -1,3 +1,5 @@
+import json
+
 import fitz
 
 from services.orchestrator import process_uploads
@@ -51,3 +53,12 @@ def test_assemble_and_save_named_file(tmp_path, monkeypatch):
     result = process_uploads([("cover.pdf", _cover_pdf())])
     assert result.filename == "123456_2024-Valuation.pdf"
     assert (tmp_path / result.job_id / result.filename).is_file()
+    debug_path = tmp_path / result.job_id / "profile_debug.json"
+    assert result.profile_debug_path == str(debug_path)
+    assert debug_path.is_file()
+    debug = json.loads(debug_path.read_text(encoding="utf-8"))
+    assert debug["plan_type"] == "401k"
+    assert debug["testing_method"] == "CURRENT"
+    assert debug["adp_failed"] is True
+    assert debug["phase"] == "after_business_rule_edits"
+    assert debug["section_decisions"]

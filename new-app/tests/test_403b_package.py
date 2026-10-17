@@ -1,3 +1,5 @@
+import json
+
 import fitz
 
 from models.plan_profile import DetectedSection, PlanProfile
@@ -135,6 +137,23 @@ def test_selectable_403b_pass_package_keeps_only_no_action_and_information(tmp_p
     assert "SAMPLE/DRAFT" not in text
     assert "Test Failure Information" not in text
     assert "limit has been exceeded" not in text
+    debug = json.loads(
+        (tmp_path / result.job_id / "profile_debug.json").read_text(encoding="utf-8")
+    )
+    assert debug["plan_type"] == "403b"
+    assert debug["acp_failed"] is False
+    assert debug["fail_402g"] is False
+    assert debug["fail_415"] is False
+    assert debug["returns_required"] is False
+    assert "No Action Message" in debug["selected_sections"]
+    assert "ACP Failure Notice (CURRENT)" in debug["removed_sections"]
+    assert any(
+        item["rule_id"] == "I"
+        and item["action"] == "remove"
+        and item["source_matches"]
+        for item in debug["before_edit_section_decisions"]
+    )
+    assert debug["field_sources"]["acp_failed"].startswith("Result Summary:")
 
 
 def test_401k_rules_stay_on_the_401k_configuration():

@@ -23,6 +23,7 @@ from services import (
     package_polish,
     pdf_modifier,
     plan_profile_service,
+    profile_debug,
     review_service,
     rules_engine,
     save_service,
@@ -71,6 +72,7 @@ def process_uploads(
     email_path = ""
     log_file = ""
     saved_copy = ""
+    profile_debug_path = ""
     subject = ""
     try:
         if is_midyear or midyear.package_is_midyear([], doc):
@@ -78,17 +80,26 @@ def process_uploads(
             warnings.extend(midyear.reorder_pages(doc))
         warnings.extend(package_polish.reorder_inner_pages(doc))
         profile = pdf_extractor.extract_plan_profile(doc)
+        profile.extra["field_sources"] = {
+            key: "PDF package text"
+            for key, value in profile.model_dump().items()
+            if key not in {"extra", "detected_sections", "extraction_warnings"}
+            and value not in (None, "", [], {})
+        }
         pdf_plan_name = profile.plan_name
         overlays: list[dict] = []
+        overlay_sources: list[str] = []
         excel_plan_name: str | None = None
         for name, data in excels:
             parsed = source_profile.parse_excel(data)
             if parsed.get("plan_name"):
                 excel_plan_name = str(parsed["plan_name"])
             overlays.append(parsed)
+            overlay_sources.append(f"Excel: {name}")
             warnings.append(f"Read Val Assembly Excel: {name}")
         for name, text in summary_texts:
             overlays.append(source_profile.parse_summary_text(text))
+            overlay_sources.append(f"Result Summary: {name}")
             warnings.append(f"Read Compliance Testing Summary: {name}")
         if not summary_texts:
             merged_text = "\n".join((page.get_text("text") or "") for page in doc)
@@ -100,10 +111,16 @@ def process_uploads(
                 parsed = source_profile.parse_summary_text(merged_text)
                 if parsed.get("adp_failed") is not None or parsed.get("fail_402g") is not None:
                     overlays.append(parsed)
+                    overlay_sources.append("Result Summary embedded in PDF package")
         explicit_contributions = any(
             "contributions_required" in overlay for overlay in overlays
         )
-        profile = source_profile.merge_overlays(profile, overlays, warnings)
+        profile = source_profile.merge_overlays(
+            profile,
+            overlays,
+            warnings,
+            sources=overlay_sources,
+        )
         section_names = {
             str(spec.get("name"))
             for name, _data in ordered
@@ -111,18 +128,23 @@ def process_uploads(
         }
         if profile.hce_current is None and "HCE/Key" in section_names:
             profile.hce_current = True
+            profile.extra["field_sources"]["hce_current"] = "Uploaded report filename"
         if profile.hce_future is None and "Future HCE" in section_names:
             profile.hce_future = True
+            profile.extra["field_sources"]["hce_future"] = "Uploaded report filename"
         if package_polish.has_variance_client_copy([name for name, _data in ordered], doc):
             profile.contributions_required = True
             explicit_contributions = True
+            profile.extra["field_sources"]["contributions_required"] = "Variance report existence"
         profile.extra["contributions_explicit"] = explicit_contributions
         cover_text = "\n".join((page.get_text("text") or "") for page in doc[:2])
         family = plan_family(cover_text)
         if family:
             profile.plan_type = family
+            profile.extra["field_sources"]["plan_type"] = "Cover letter plan name"
         elif is_403b and not (profile.plan_type or "").strip():
             profile.plan_type = "403b"
+            profile.extra["field_sources"]["plan_type"] = "403(b) package detection"
         if is_midyear:
             profile.midyear = True
             for key, value in midyear.read_letter_facts(doc).items():
@@ -131,6 +153,18 @@ def process_uploads(
         profile = plan_profile_service.finalize_profile(profile)
         review = review_service.validate(profile, doc=doc)
         decisions = rules_engine.evaluate(profile)
+        profile_debug_path = str(
+            profile_debug.write_profile_debug(
+                job_id,
+                profile,
+                decisions,
+                doc,
+                source_files=[name for name, _data in ordered]
+                + [name for name, _data in excels]
+                + [name for name, _text in summary_texts],
+                phase="before_business_rule_edits",
+            )
+        )
         removed = pdf_modifier.apply_decisions(doc, decisions, profile.plan_type)
         recap_removed = pdf_modifier.apply_recap_bullets(doc, decisions, profile.plan_type)
         filled = pdf_modifier.fill_qnec_placeholders(doc, profile, highlights)
@@ -149,6 +183,18 @@ def process_uploads(
         else:
             warnings.extend(source_rewrite.apply_cover_date(doc, highlights))
         profile.detected_sections = pdf_extractor.detect_sections(doc)
+        profile_debug_path = str(
+            profile_debug.write_profile_debug(
+                job_id,
+                profile,
+                decisions,
+                doc,
+                source_files=[name for name, _data in ordered]
+                + [name for name, _data in excels]
+                + [name for name, _text in summary_texts],
+                phase="after_business_rule_edits",
+            )
+        )
         review.items.extend(package_polish.package_checks(doc, profile))
         bookmark_count = bookmark_service.add_bookmarks(
             doc,
@@ -246,6 +292,7 @@ def process_uploads(
         email_subject=subject,
         email_path=email_path,
         log_path=log_file,
+        profile_debug_path=profile_debug_path,
         saved_copy_path=saved_copy,
         elapsed_seconds=round(elapsed_seconds, 1),
     )
